@@ -149,6 +149,29 @@ def test_full_actions_flow(monkeypatch, tmp_path):
         raise AssertionError(f"unexpected call {method} {url}")
 
     monkeypatch.setattr(ld, "_request", fake_request)
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return EXAMPLE.encode()
+
+    class FakeOpener:
+        def open(self, request, timeout=60):
+            raise ld.urllib.error.HTTPError(
+                request.full_url,
+                302,
+                "Found",
+                {"Location": "https://signed.example/job-log"},
+                None,
+            )
+
+    monkeypatch.setattr(ld.urllib.request, "build_opener", lambda *args: FakeOpener())
+    monkeypatch.setattr(ld.urllib.request, "urlopen", lambda url, timeout=60: FakeResponse())
     assert ld.run_in_actions() == 0
     assert "list not sorted" in posted["body"]
     assert "lint" not in posted["body"]  # successful jobs are ignored
