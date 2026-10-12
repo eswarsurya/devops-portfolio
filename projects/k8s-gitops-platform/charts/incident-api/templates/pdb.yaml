@@ -1,0 +1,14 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+# Keeps a minimum number of pods running during node drains and cluster upgrades
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "incident-api.fullname" . }}
+  labels:
+    {{- include "incident-api.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "incident-api.selectorLabels" . | nindent 6 }}
+{{- end }}

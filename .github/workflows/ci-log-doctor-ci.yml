@@ -1,0 +1,31 @@
+name: ci-log-doctor
+
+on:
+  push:
+    branches: [main]
+    paths: ["projects/ci-log-doctor/**", ".github/workflows/ci-log-doctor-ci.yml"]
+  pull_request:
+    paths: ["projects/ci-log-doctor/**", ".github/workflows/ci-log-doctor-ci.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/ci-log-doctor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest==8.3.4 ruff==0.8.4
+      - name: Lint
+        run: ruff check . && ruff format --check .
+      - name: Tool tests
+        run: pytest -q tests
+      - name: Demo tests (break these in a PR to see the doctor in action)
+        run: pytest -q demo

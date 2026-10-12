@@ -1,0 +1,27 @@
+{{- if .Values.networkPolicy.enabled }}
+# Default-deny for this app: only pods in the same namespace (and Prometheus)
+# may reach it. Needs a CNI that enforces NetworkPolicy (Calico, Cilium...).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "incident-api.fullname" . }}
+  labels:
+    {{- include "incident-api.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "incident-api.selectorLabels" . | nindent 6 }}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.monitoringNamespace }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - port: {{ .Values.containerPort }}
+          protocol: TCP
+{{- end }}

@@ -1,0 +1,18 @@
+{{- if .Values.serviceMonitor.enabled }}
+# Tells the Prometheus Operator to scrape /metrics from this Service
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "incident-api.fullname" . }}
+  labels:
+    {{- include "incident-api.labels" . | nindent 4 }}
+    release: kube-prometheus-stack   # matches the stack's default selector
+spec:
+  selector:
+    matchLabels:
+      {{- include "incident-api.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: {{ .Values.serviceMonitor.path }}
+      interval: {{ .Values.serviceMonitor.interval }}
+{{- end }}

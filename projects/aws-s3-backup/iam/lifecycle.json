@@ -1,0 +1,12 @@
+{
+  "Rules": [
+    {
+      "ID": "expire-old-backups",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "" },
+      "Transitions": [{ "Days": 30, "StorageClass": "GLACIER_IR" }],
+      "Expiration": { "Days": 90 },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 1 }
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+#!/bin/bash
+# Runs once at first boot on each instance (cloud-init).
+set -euxo pipefail
+dnf install -y docker
+systemctl enable --now docker
+docker run -d --name app --restart unless-stopped \
+  -p ${container_port}:${container_port} \
+  ${image}

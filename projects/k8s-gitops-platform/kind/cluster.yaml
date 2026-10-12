@@ -1,0 +1,9 @@
+# 3-node local cluster: 1 control plane + 2 workers, so pod spreading and
+# PodDisruptionBudgets mean something when you drain a node.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: gitops-lab
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker

@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: rail-pulse
+    folder: Rail Pulse
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

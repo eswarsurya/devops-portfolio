@@ -1,0 +1,27 @@
+name: aws-s3-backup
+
+on:
+  push:
+    branches: [main]
+    paths: ["projects/aws-s3-backup/**", ".github/workflows/aws-s3-backup-ci.yml"]
+  pull_request:
+    paths: ["projects/aws-s3-backup/**", ".github/workflows/aws-s3-backup-ci.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/aws-s3-backup
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck
+        run: shellcheck scripts/*.sh tests/*.sh tests/fake-aws
+      - name: Validate JSON policies
+        run: for f in iam/*.json; do python3 -m json.tool "$f" > /dev/null && echo "ok $f"; done
+      - name: Offline tests (fake aws CLI)
+        run: bash tests/run-tests.sh

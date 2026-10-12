@@ -1,0 +1,59 @@
+# Default values. Environment files (values-dev.yaml, values-prod.yaml) override these.
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/eswarsurya/docker-cicd-pipeline
+  tag: ""            # empty = use Chart.appVersion
+  pullPolicy: IfNotPresent
+
+containerPort: 8000
+
+probes:
+  livenessPath: /health
+  readinessPath: /ready
+
+env:
+  APP_ENV: default
+
+podSecurity:
+  runAsUser: 10001             # matches the non-root user in the Dockerfile
+  readOnlyRootFilesystem: true # app only writes to the /tmp emptyDir
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 192Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+networkPolicy:
+  enabled: true
+  # Namespace allowed to scrape metrics (kube-prometheus-stack runs here)
+  monitoringNamespace: monitoring
+
+# Needs the Prometheus Operator CRDs (installed by kube-prometheus-stack)
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  path: /metrics
+
+ingress:
+  enabled: false
+  className: nginx
+  host: incident-api.local

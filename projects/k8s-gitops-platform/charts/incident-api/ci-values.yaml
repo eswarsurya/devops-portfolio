@@ -1,0 +1,17 @@
+# Used only by the CI kind test: a small public non-root web server,
+# so the chart test doesn't depend on another repo's image being public.
+image:
+  repository: nginxinc/nginx-unprivileged
+  tag: "1.27-alpine"
+containerPort: 8080
+probes:
+  livenessPath: /
+  readinessPath: /
+autoscaling:
+  enabled: false
+replicaCount: 2
+networkPolicy:
+  enabled: false
+podSecurity:
+  runAsUser: 101               # nginx-unprivileged's user
+  readOnlyRootFilesystem: false # nginx writes its cache under /var/cache

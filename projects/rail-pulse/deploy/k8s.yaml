@@ -1,0 +1,73 @@
+# Deploy onto the k8s-gitops-platform cluster (kube-prometheus-stack in "monitoring").
+# Single replica on purpose: one poller per feed keeps us polite to the public API.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rail-pulse
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rail-pulse
+  namespace: rail-pulse
+  labels: { app: rail-pulse }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }   # never two pollers at once
+  selector:
+    matchLabels: { app: rail-pulse }
+  template:
+    metadata:
+      labels: { app: rail-pulse }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: app
+          image: ghcr.io/eswarsurya/rail-pulse:latest
+          ports:
+            - { name: http, containerPort: 8000 }
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 20
+          readinessProbe:            # 503 until fresh data -> no traffic to an empty map
+            httpGet: { path: /ready, port: http }
+            periodSeconds: 10
+            failureThreshold: 30
+          resources:
+            requests: { cpu: 20m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 160Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rail-pulse
+  namespace: rail-pulse
+  labels: { app: rail-pulse }
+spec:
+  selector: { app: rail-pulse }
+  ports:
+    - { name: http, port: 80, targetPort: http }
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: rail-pulse
+  namespace: rail-pulse
+  labels: { release: kube-prometheus-stack }
+spec:
+  selector:
+    matchLabels: { app: rail-pulse }
+  endpoints:
+    - { port: http, path: /metrics, interval: 15s }

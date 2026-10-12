@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: incident-api-dev
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"   # after monitoring (wave 0) so the ServiceMonitor CRD exists
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/eswarsurya/devops-portfolio.git
+    targetRevision: main
+    path: projects/k8s-gitops-platform/charts/incident-api
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-dev.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: incident-api-dev
+  syncPolicy:
+    automated:
+      prune: true      # delete resources removed from git
+      selfHeal: true   # revert manual kubectl changes back to what git says
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2

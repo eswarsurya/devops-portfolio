@@ -1,0 +1,21 @@
+# Run with: helm test <release>   - passes if the Service answers on the liveness path
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "incident-api.fullname" . }}-test
+  labels:
+    {{- include "incident-api.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation   # keep the pod so `helm test --logs` can read it
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+  containers:
+    - name: wget
+      image: busybox:1.36
+      command: ["wget", "-q", "-O-", "http://{{ include "incident-api.fullname" . }}:{{ .Values.service.port }}{{ .Values.probes.livenessPath }}"]
+      securityContext:
+        allowPrivilegeEscalation: false

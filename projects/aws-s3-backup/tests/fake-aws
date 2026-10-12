@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Minimal stand-in for the aws CLI so tests run offline, with no AWS account.
+# "Buckets" are folders under $FAKE_S3_ROOT.
+set -euo pipefail
+root="${FAKE_S3_ROOT:?}"
+
+if [[ "$1 $2" == "s3 cp" ]]; then
+  src="$3"; dst="$4"
+  if [[ "$src" == s3://* ]]; then          # download
+    cp "$root/${src#s3://}" "$dst"
+  else                                     # upload
+    path="$root/${dst#s3://}"
+    mkdir -p "$(dirname "$path")"
+    cp "$src" "$path"
+  fi
+  exit 0
+fi
+
+if [[ "$1 $2" == "s3api head-object" ]]; then
+  # args: --bucket B --key K ...
+  bucket="$4"; key="$6"
+  f="$root/$bucket/$key"
+  [[ -f "$f" ]] || { echo "Not Found" >&2; exit 255; }
+  stat -c %s "$f"
+  exit 0
+fi
+
+if [[ "$1 $2" == "s3api list-objects-v2" ]]; then
+  bucket="$4"; prefix="$6"
+  # shellcheck disable=SC2012  # test fixture, controlled names
+  ls -1t "$root/$bucket/$prefix"*.tar.gz 2>/dev/null | head -1 | sed "s|$root/$bucket/||" || echo None
+  exit 0
+fi
+
+echo "fake-aws: unsupported command: $*" >&2
+exit 1

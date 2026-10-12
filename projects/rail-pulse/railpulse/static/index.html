@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rail Pulse · live</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<style>
+  :root{--bg:#0b0f14;--panel:#121821;--line:#243041;--fg:#e8eef5;--mute:#8a98aa;
+        --ok:#2fbf71;--warn:#e9a23b;--bad:#ef5a5a;--accent:#4fb3ff;--mono:ui-monospace,Menlo,monospace}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;flex-direction:column}
+  header{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--line)}
+  header h1{margin:0;font-size:17px;letter-spacing:.2px}
+  .live{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mute);margin-left:auto}
+  .pulse{width:8px;height:8px;border-radius:50%;background:var(--ok);animation:p 2s infinite}
+  @keyframes p{0%{box-shadow:0 0 0 0 rgba(47,191,113,.6)}70%{box-shadow:0 0 0 8px rgba(47,191,113,0)}100%{box-shadow:none}}
+  .stale .pulse{background:var(--bad);animation:none}
+  #banner{display:none;background:#3a1717;color:#ffb4b4;padding:6px 20px;font-size:13px}
+  main{flex:1;display:grid;grid-template-columns:380px 1fr;min-height:0}
+  aside{border-right:1px solid var(--line);overflow:auto;padding:16px}
+  #map{height:100%;min-height:420px;background:#0e1520}
+  .kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+  .kpi .v{font-size:26px;font-weight:650;font-variant-numeric:tabular-nums}
+  .kpi .l{font-size:12px;color:var(--mute)}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--mute);margin:20px 0 8px}
+  .cat{display:grid;grid-template-columns:76px 1fr 54px;align-items:center;gap:8px;margin:6px 0;font-size:13px}
+  .bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+  .bar i{display:block;height:100%;border-radius:4px}
+  .num{text-align:right;font-variant-numeric:tabular-nums;color:var(--mute)}
+  svg.spark{width:100%;height:56px;display:block}
+  .row{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .row b{font-family:var(--mono);font-weight:600}
+  .late{font-variant-numeric:tabular-nums;font-weight:600}
+  .ev{font-size:13px;padding:6px 0;border-bottom:1px solid var(--line);animation:in .3s}
+  @keyframes in{from{opacity:0;transform:translateX(-4px)}}
+  .ev .t{color:var(--mute);font-family:var(--mono);font-size:11px;margin-right:6px}
+  .tag{font-size:10px;padding:1px 6px;border-radius:8px;margin-right:6px;text-transform:uppercase;letter-spacing:.5px}
+  .spike{background:#3b1d1d;color:var(--bad)} .recovered{background:#16301f;color:var(--ok)}
+  .started{background:#14273a;color:var(--accent)} .finished{background:#222a35;color:var(--mute)}
+  .legend{position:absolute;right:12px;bottom:22px;z-index:500;background:rgba(18,24,33,.92);border:1px solid var(--line);
+          border-radius:8px;padding:8px 10px;font-size:12px}
+  .legend span{display:inline-block;width:10px;height:10px;border-radius:50%;margin:0 4px 0 10px;vertical-align:-1px}
+  .leaflet-container{background:#0e1520;font:inherit}
+  .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--panel);color:var(--fg);border:1px solid var(--line)}
+  .mute{color:var(--mute)}
+  @media (max-width:860px){main{grid-template-columns:1fr}aside{border-right:0;border-bottom:1px solid var(--line)}#map{height:60vh}}
+</style>
+</head>
+<body>
+<header>
+  <h1>🚆 Rail Pulse</h1><span class="mute">Irish Rail, live punctuality</span>
+  <div class="live" id="live"><span class="pulse"></span><span id="updated">connecting…</span></div>
+</header>
+<div id="banner"></div>
+<main>
+  <aside>
+    <div class="kpis">
+      <div class="kpi"><div class="v" id="k-running">–</div><div class="l">trains running</div></div>
+      <div class="kpi"><div class="v" id="k-ontime">–</div><div class="l">on time (SLI)</div></div>
+      <div class="kpi"><div class="v" id="k-avg">–</div><div class="l">avg delay, min</div></div>
+      <div class="kpi"><div class="v" id="k-max">–</div><div class="l">worst delay, min</div></div>
+    </div>
+    <h2>On time by service</h2><div id="cats"></div>
+    <h2>On-time trend</h2><svg class="spark" id="spark" viewBox="0 0 300 56" preserveAspectRatio="none"></svg>
+    <h2>Most delayed now</h2><div id="worst"></div>
+    <h2>Live events</h2><div id="events"><div class="mute">Waiting for the next poll…</div></div>
+  </aside>
+  <div style="position:relative">
+    <div id="map"></div>
+    <div class="legend">delay<span style="background:var(--ok)"></span>on time<span style="background:var(--warn)"></span>late<span style="background:var(--bad)"></span>15+ min</div>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const LIMIT = {DART: 5, Commuter: 5, Intercity: 10};
+const colour = t => t.delay_min == null ? "#8a98aa" : t.delay_min >= 15 ? "var(--bad)" : t.delay_min > LIMIT[t.category] ? "var(--warn)" : "var(--ok)";
+const pct = r => r == null ? "–" : Math.round(r * 100) + "%";
+
+const map = L.map("map", {zoomControl: true, attributionControl: true}).setView([53.35, -7.7], 7);
+fetch("/static/ireland.geojson").then(r => r.json()).then(g =>
+  L.geoJSON(g, {style: {color: "#2d3d52", weight: 1, fillColor: "#152030", fillOpacity: 1}}).addTo(map).bringToBack());
+L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+  maxZoom: 13, attribution: '&copy; OpenStreetMap &copy; CARTO · data: Irish Rail'}).addTo(map);
+const markers = {};
+
+function drawMap(trains) {
+  const seen = new Set();
+  for (const t of trains) {
+    seen.add(t.code);
+    const running = t.status === "running";
+    const style = {radius: running ? 7 : 4, color: "#0b0f14", weight: 1.5, fillColor: running ? colour(t) : "#4a5668", fillOpacity: running ? .95 : .6};
+    const html = `<b>${esc(t.code)}</b> · ${esc(t.category)}<br>${esc(t.origin ?? "")} → ${esc(t.destination ?? t.direction)}<br>` +
+      (running ? `${esc(t.last_event ?? "")} ${esc(t.last_location ?? "")}${t.next_stop ? `, next ${esc(t.next_stop)}` : ""}<br><b>${t.delay_min ?? "?"} min</b> late`
+               : `Not started · due ${esc(t.scheduled ?? "")}`);
+    if (markers[t.code]) markers[t.code].setLatLng([t.lat, t.lon]).setStyle(style).setPopupContent(html);
+    else markers[t.code] = L.circleMarker([t.lat, t.lon], style).bindPopup(html).addTo(map);
+  }
+  for (const code in markers) if (!seen.has(code)) { map.removeLayer(markers[code]); delete markers[code]; }
+}
+
+function drawSpark(history) {
+  const pts = history.filter(h => h.on_time != null);
+  if (pts.length < 2) { $("spark").innerHTML = ""; return; }
+  const xs = i => (i / (pts.length - 1)) * 300, ys = v => 52 - v * 48;
+  const line = pts.map((h, i) => `${xs(i).toFixed(1)},${ys(h.on_time).toFixed(1)}`).join(" ");
+  $("spark").innerHTML = `<line x1="0" x2="300" y1="${ys(.85)}" y2="${ys(.85)}" stroke="#e9a23b" stroke-dasharray="4 4" stroke-width="1"/>
+    <polyline points="0,56 ${line} 300,56" fill="rgba(79,179,255,.12)" stroke="none"/>
+    <polyline points="${line}" fill="none" stroke="#4fb3ff" stroke-width="2" vector-effect="non-scaling-stroke"/>`;
+}
+
+function render(s) {
+  const o = s.stats.overall || {};
+  $("k-running").textContent = o.running ?? "–";
+  $("k-ontime").textContent = pct(o.on_time_ratio);
+  $("k-ontime").style.color = o.on_time_ratio == null ? "" : o.on_time_ratio >= .85 ? "var(--ok)" : "var(--warn)";
+  $("k-avg").textContent = o.avg_delay ?? "–";
+  $("k-max").textContent = o.max_delay ?? "–";
+  $("cats").innerHTML = Object.entries(s.stats.by_category || {}).map(([c, v]) => `
+    <div class="cat"><span>${c}</span><div class="bar"><i style="width:${(v.on_time_ratio ?? 0) * 100}%;background:${(v.on_time_ratio ?? 1) >= .85 ? "var(--ok)" : "var(--warn)"}"></i></div>
+    <span class="num">${pct(v.on_time_ratio)} · ${v.running}</span></div>`).join("");
+  $("worst").innerHTML = (s.stats.worst || []).map(w => `
+    <div class="row"><span><b>${esc(w.code)}</b> <span class="mute">${esc(w.route)}</span></span>
+    <span class="late" style="color:${w.delay_min >= 15 ? "var(--bad)" : "var(--warn)"}">+${w.delay_min}</span></div>`).join("") || `<div class="mute">Nothing late. Nice.</div>`;
+  if (s.events.length) $("events").innerHTML = s.events.slice(0, 12).map(e => `
+    <div class="ev"><span class="t">${new Date(e.ts * 1000).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"})}</span><span class="tag ${e.kind}">${e.kind}</span>${esc(e.text)}</div>`).join("");
+  drawSpark(s.history || []);
+  drawMap(s.trains);
+  $("updated").textContent = s.last_success ? "updated " + new Date(s.last_success * 1000).toLocaleTimeString() : "waiting for data";
+  $("live").classList.toggle("stale", !!s.stale);
+  $("banner").style.display = s.stale || s.last_error ? "block" : "none";
+  $("banner").textContent = s.last_error ? `Feed problem: ${s.last_error}. Showing last good data, retrying with backoff.` : s.stale ? "Data is stale." : "";
+}
+
+const es = new EventSource("/api/stream");
+es.onmessage = e => render(JSON.parse(e.data));
+es.onerror = () => { $("live").classList.add("stale"); $("updated").textContent = "reconnecting…"; };
+</script>
+</body>
+</html>

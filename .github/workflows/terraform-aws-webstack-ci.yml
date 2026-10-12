@@ -1,0 +1,48 @@
+name: terraform-aws-webstack
+
+on:
+  push:
+    branches: [main]
+    paths: ["projects/terraform-aws-webstack/**", ".github/workflows/terraform-aws-webstack-ci.yml"]
+  pull_request:
+    paths: ["projects/terraform-aws-webstack/**", ".github/workflows/terraform-aws-webstack-ci.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dir: [bootstrap, envs/dev]
+    defaults:
+      run:
+        working-directory: projects/terraform-aws-webstack/${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.10.5"
+      - name: Format check
+        run: terraform fmt -check -recursive
+      - name: Init (no backend - CI has no AWS creds)
+        run: terraform init -backend=false
+      - name: Validate
+        run: terraform validate
+      - name: Unit tests (mocked AWS provider)
+        if: matrix.dir == 'envs/dev'
+        run: terraform test
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Static security scan (IaC misconfigurations via Trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0 (pinned to commit)
+        with:
+          scan-type: config
+          scan-ref: projects/terraform-aws-webstack
+          severity: CRITICAL,HIGH
+          exit-code: "0"   # report only; flip to "1" to block merges

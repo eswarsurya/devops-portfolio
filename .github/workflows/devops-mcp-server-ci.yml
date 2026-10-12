@@ -1,0 +1,62 @@
+name: devops-mcp-server
+
+on:
+  push:
+    branches: [main]
+    paths: ["projects/devops-mcp-server/**", ".github/workflows/devops-mcp-server-ci.yml"]
+  pull_request:
+    paths: ["projects/devops-mcp-server/**", ".github/workflows/devops-mcp-server-ci.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/devops-mcp-server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: projects/devops-mcp-server/requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      - name: Lint
+        run: ruff check . && ruff format --check .
+      - name: Tests (in-process MCP client)
+        run: pytest -q
+
+  stdio-e2e:
+    # Install the package and talk to it exactly like Claude Desktop does: a subprocess over stdio
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/devops-mcp-server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install .
+      - name: Start server over stdio, list tools, try an SSRF payload
+        run: |
+          python - <<'PY'
+          import asyncio
+          from mcp import StdioServerParameters
+          from mcp.client import Client
+
+          async def main():
+              async with Client(StdioServerParameters(command="devops-mcp")) as c:
+                  names = [t.name for t in (await c.list_tools()).tools]
+                  print("tools:", names)
+                  assert "check_url" in names and len(names) >= 8
+                  r = await c.call_tool("check_url", {"url": "http://169.254.169.254/"})
+                  assert r.is_error and "SSRF" in r.content[0].text, r
+                  print("SSRF blocked:", r.content[0].text)
+
+          asyncio.run(main())
+          PY

@@ -1,0 +1,56 @@
+# Trimmed for a laptop kind cluster. Production would add persistence and HA.
+grafana:
+  adminPassword: change-me-locally   # demo only - use a Secret / external secrets in real life
+  defaultDashboardsEnabled: true
+
+prometheus:
+  prometheusSpec:
+    retention: 2d
+    resources:
+      requests:
+        cpu: 100m
+        memory: 400Mi
+    # Pick up ServiceMonitors from every namespace, not just this release's
+    serviceMonitorSelectorNilUsesHelmValues: false
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+
+# Components kind doesn't expose - avoids permanently red targets
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+# Alert for our app: fire if the incident-api 5xx rate goes above 5% for 5 minutes
+additionalPrometheusRulesMap:
+  incident-api:
+    groups:
+      - name: incident-api.rules
+        rules:
+          - alert: IncidentApiHighErrorRate
+            expr: |
+              sum(rate(http_requests_total{status=~"5.."}[5m]))
+                /
+              clamp_min(sum(rate(http_requests_total[5m])), 1e-9) > 0.05
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "incident-api 5xx rate above 5%"
+              runbook: "kubectl -n incident-api-dev logs deploy/incident-api-dev --tail=100"
+          - alert: IncidentApiDown
+            expr: absent(up{job=~".*incident-api.*"} == 1)
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "No healthy incident-api targets for 2 minutes"

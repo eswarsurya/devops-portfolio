@@ -1,0 +1,66 @@
+# Least privilege, split in two:
+#  1. triage-reader (cluster-wide, READ ONLY) - what the AI's tools can use
+#  2. triage-remediator (ONE namespace, only the verbs approved fixes need)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aiops-triage
+  namespace: aiops
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: triage-reader
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list"]
+  # Deliberately NOT included: secrets, configmaps, exec, any write verb
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: aiops-triage-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: triage-reader
+subjects:
+  - kind: ServiceAccount
+    name: aiops-triage
+    namespace: aiops
+---
+# Write access only in the app namespace, only for rollout restart/undo and scale,
+# and only ever used by the /approve endpoint after a human clicks Approve.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: triage-remediator
+  namespace: prod
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["list"]   # rollout undo reads revision history
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: aiops-triage-remediator
+  namespace: prod
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: triage-remediator
+subjects:
+  - kind: ServiceAccount
+    name: aiops-triage
+    namespace: aiops

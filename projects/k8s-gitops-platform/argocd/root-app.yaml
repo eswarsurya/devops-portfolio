@@ -1,0 +1,20 @@
+# "App of apps": the only thing you apply by hand. Argo CD then watches
+# argocd/apps/ in this repo and creates every Application it finds there.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/eswarsurya/devops-portfolio.git
+    targetRevision: main
+    path: projects/k8s-gitops-platform/argocd/apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

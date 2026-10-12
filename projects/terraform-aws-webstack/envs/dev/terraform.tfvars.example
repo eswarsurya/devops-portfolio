@@ -1,0 +1,11 @@
+# Copy to terraform.tfvars and edit. terraform.tfvars is git-ignored.
+
+# Option A - the API from docker-cicd-pipeline (GHCR package must be public)
+container_image   = "ghcr.io/eswarsurya/docker-cicd-pipeline:latest"
+container_port    = 8000
+health_check_path = "/health"
+
+# Option B - a plain demo web server, if you haven't pushed the API yet
+# container_image   = "nginxdemos/hello:plain-text"
+# container_port    = 80
+# health_check_path = "/"

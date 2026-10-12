@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AIOps Triage · live</title>
+<style>
+  :root{--bg:#0d1117;--panel:#161b22;--line:#30363d;--fg:#e6edf3;--mute:#8b949e;
+        --blue:#58a6ff;--green:#3fb950;--amber:#d29922;--red:#f85149;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+  header{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--line)}
+  header h1{font-size:16px;margin:0}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 rgba(63,185,80,.7);animation:p 2s infinite}
+  @keyframes p{70%{box-shadow:0 0 0 8px rgba(63,185,80,0)}100%{box-shadow:0 0 0 0 rgba(63,185,80,0)}}
+  header .mute{margin-left:auto}
+  main{display:grid;grid-template-columns:320px 1fr;min-height:calc(100vh - 55px)}
+  aside{border-right:1px solid var(--line);overflow:auto}
+  .inc{padding:12px 16px;border-bottom:1px solid var(--line);cursor:pointer}
+  .inc:hover,.inc.on{background:var(--panel)}
+  .inc b{display:block}
+  .mute{color:var(--mute);font-size:12px}
+  .badge{display:inline-block;font-size:11px;padding:1px 8px;border-radius:10px;border:1px solid var(--line);margin-left:6px}
+  .investigating{color:var(--blue);border-color:var(--blue)} .diagnosed{color:var(--amber);border-color:var(--amber)}
+  .approved{color:var(--green);border-color:var(--green)} .rejected,.failed{color:var(--red);border-color:var(--red)}
+  section{padding:20px 24px;overflow:auto}
+  .feed{list-style:none;margin:0;padding:0;border-left:2px solid var(--line)}
+  .feed>li{position:relative;margin:0 0 14px 18px;animation:in .25s ease-out}
+  @keyframes in{from{opacity:0;transform:translateY(4px)}}
+  .feed>li::before{content:"";position:absolute;left:-25px;top:6px;width:10px;height:10px;border-radius:50%;background:var(--line)}
+  .feed>li.thought::before{background:var(--blue)} .feed>li.tool_call::before{background:var(--amber)}
+  .feed>li.tool_result::before{background:var(--mute)} .feed>li.diagnosis::before{background:var(--green)}
+  .feed>li.err::before{background:var(--red)}
+  pre{font:12px/1.45 var(--mono);background:var(--panel);border:1px solid var(--line);border-radius:6px;
+      padding:10px;margin:6px 0 0;white-space:pre-wrap;max-height:220px;overflow:auto}
+  code{font-family:var(--mono);color:var(--amber)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;margin-top:6px}
+  .card h3{margin:0 0 8px;font-size:15px}
+  .card ul{margin:6px 0;padding-left:20px}
+  .action{border:1px dashed var(--amber);border-radius:6px;padding:12px;margin-top:12px}
+  button{font:inherit;border-radius:6px;padding:6px 14px;cursor:pointer;border:1px solid var(--line);background:#21262d;color:var(--fg)}
+  button.ok{background:#238636;border-color:#2ea043} button.no{color:var(--red)}
+  input{font:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:5px 8px;width:180px}
+  .empty{color:var(--mute);margin-top:40px;text-align:center}
+  @media (max-width:760px){main{grid-template-columns:1fr}aside{max-height:35vh;border-right:0;border-bottom:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<header><span class="dot"></span><h1>AIOps Triage</h1><span class="mute">AI investigates · humans decide</span></header>
+<main>
+  <aside id="list"><div class="empty">Waiting for alerts…</div></aside>
+  <section id="detail"><div class="empty">Select an incident to watch the investigation live.</div></section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let current = null, source = null;
+
+async function refreshList() {
+  const items = await (await fetch("/incidents")).json();
+  if (!items.length) return;
+  $("#list").innerHTML = items.map(i => `
+    <div class="inc ${i.id === current ? "on" : ""}" data-id="${i.id}">
+      <b>#${i.id} ${esc(i.alertname)}<span class="badge ${i.status}">${i.status}</span></b>
+      <span class="mute">${esc(i.namespace)} · ${new Date(i.created * 1000).toLocaleTimeString()}</span>
+      ${i.summary ? `<div class="mute">${esc(i.summary)}</div>` : ""}
+    </div>`).join("");
+  document.querySelectorAll(".inc").forEach(el => el.onclick = () => open(+el.dataset.id));
+  if (current === null) open(items[0].id);
+}
+
+function render(ev) {
+  const li = document.createElement("li");
+  li.className = ev.type + (ev.error ? " err" : "");
+  if (ev.type === "started") li.innerHTML = `<b>Alert received</b><pre>${esc(ev.alert)}</pre>`;
+  else if (ev.type === "thought") li.innerHTML = `<span>${esc(ev.text)}</span>`;
+  else if (ev.type === "tool_call") li.innerHTML = `<span class="mute">step ${ev.step}</span> <code>${esc(ev.call)}</code>`;
+  else if (ev.type === "tool_result") li.innerHTML = `<pre>${esc(ev.output)}</pre>`;
+  else if (ev.type === "diagnosis") li.innerHTML = diagnosisCard(ev.diagnosis);
+  else if (ev.type === "status") li.innerHTML = `<b>${esc(ev.status)}</b>${ev.result ? `<pre>${esc(ev.result)}</pre>` : ""}`;
+  $("#feed").appendChild(li);
+  li.scrollIntoView({behavior: "smooth", block: "end"});
+  if (ev.type === "diagnosis" || ev.type === "status") refreshList();
+}
+
+function diagnosisCard(d) {
+  const a = d.proposed_action;
+  return `<div class="card">
+    <h3>${esc(d.summary)}</h3>
+    <div><b>Likely cause:</b> ${esc(d.likely_cause)} <span class="badge">${esc(d.confidence)} confidence</span></div>
+    <div style="margin-top:8px"><b>Evidence</b><ul>${d.evidence.map(e => `<li><code>${esc(e)}</code></li>`).join("")}</ul></div>
+    <div><b>Next steps</b><ol>${d.next_steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol></div>
+    ${a ? `<div class="action" id="action">
+      <b>Proposed fix:</b> <code>${esc(a.type)}</code> deployment/<code>${esc(a.deployment)}</code> in <code>${esc(a.namespace)}</code>
+      ${a.replicas ? ` → ${a.replicas} replicas` : ""}<div class="mute">${esc(a.reason)}</div>
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <input id="tok" type="password" placeholder="approver token">
+        <button class="ok" onclick="decide('approve')">Approve &amp; run</button>
+        <button class="no" onclick="decide('reject')">Reject</button>
+      </div></div>` : ""}
+  </div>`;
+}
+
+async function decide(kind) {
+  const tok = $("#tok").value;
+  const r = await fetch(`/incidents/${current}/${kind}`, {method: "POST", headers: {Authorization: `Bearer ${tok}`}});
+  if (!r.ok) alertBox((await r.json()).detail || r.statusText);
+  else $("#action").querySelectorAll("button,input").forEach(b => b.disabled = true);
+}
+function alertBox(msg) { const p = document.createElement("div"); p.className = "mute"; p.style.color = "var(--red)"; p.textContent = msg; $("#action").appendChild(p); }
+
+function open(id) {
+  current = id;
+  if (source) source.close();
+  $("#detail").innerHTML = `<h2 style="margin:0 0 16px;font-size:16px">Incident #${id}</h2><ul class="feed" id="feed"></ul>`;
+  source = new EventSource(`/incidents/${id}/stream`);
+  source.onmessage = e => render(JSON.parse(e.data));
+  refreshList();
+}
+
+refreshList();
+setInterval(refreshList, 4000);
+</script>
+</body>
+</html>

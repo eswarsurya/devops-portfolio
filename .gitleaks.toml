@@ -1,0 +1,14 @@
+# Secret scanning config for gitleaks (used in CI).
+# Default rules stay on everywhere. The only exception is test fixtures that
+# contain DELIBERATELY FAKE credentials, which exist to prove the secret-redaction
+# code works. Keep this list as narrow as possible: exact files, not folders.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fake credentials used to test redaction (not real secrets)"
+paths = [
+  '''^projects/ci-log-doctor/tests/test_log_doctor\.py$''',
+  '''^projects/ci-log-doctor/examples/failed-build\.log$''',
+  '''^projects/aiops-triage-agent/tests/test_triage\.py$''',
+]

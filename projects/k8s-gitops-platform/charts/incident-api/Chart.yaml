@@ -1,0 +1,8 @@
+apiVersion: v2
+name: incident-api
+description: Helm chart for the incident-api service (built by docker-cicd-pipeline)
+type: application
+version: 0.1.0        # chart version - bump on every chart change
+appVersion: "latest"  # default image tag
+maintainers:
+  - name: Eswar Danaboina

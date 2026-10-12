@@ -1,0 +1,114 @@
+name: docker-cicd-pipeline
+
+on:
+  push:
+    branches: [main]
+    paths: ["projects/docker-cicd-pipeline/**", ".github/workflows/docker-cicd-pipeline-ci.yml"]
+  pull_request:
+    paths: ["projects/docker-cicd-pipeline/**", ".github/workflows/docker-cicd-pipeline-ci.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/eswarsurya/docker-cicd-pipeline
+
+jobs:
+  # 1. Fast feedback: lint + unit tests
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/docker-cicd-pipeline
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: projects/docker-cicd-pipeline/requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      - name: Lint
+        run: ruff check . && ruff format --check .
+      - name: Unit tests
+        run: pytest -q
+
+  # 2. Build the image, smoke-test the running container, scan it, push on main
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write          # push to GitHub Container Registry
+      security-events: write   # upload Trivy results to the Security tab
+    defaults:
+      run:
+        working-directory: projects/docker-cicd-pipeline
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: echo "tag=$(echo "${GITHUB_SHA}" | cut -c1-7)" >> "$GITHUB_OUTPUT"
+      - name: Build image
+        run: |
+          docker build --build-arg APP_VERSION=${{ steps.meta.outputs.tag }} \
+            -t "$IMAGE:${{ steps.meta.outputs.tag }}" -t "$IMAGE:latest" .
+      - name: Smoke test the container
+        run: |
+          docker run -d --name api -p 8000:8000 "$IMAGE:${{ steps.meta.outputs.tag }}"
+          for _ in $(seq 1 20); do
+            curl -fs localhost:8000/health && exit 0
+            sleep 1
+          done
+          docker logs api
+          exit 1
+      - name: Scan image for vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0 (pinned to commit)
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ steps.meta.outputs.tag }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: sarif
+          output: trivy.sarif
+      - name: Upload scan results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy.sarif
+          category: docker-cicd-pipeline
+      - name: Push to GHCR (main branch only)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker push "$IMAGE:${{ steps.meta.outputs.tag }}"
+          docker push "$IMAGE:latest"
+
+  # 3. Optional deploy to an EC2 host - only runs if the DEPLOY_* secrets exist
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production   # add a required reviewer in repo settings for a manual gate
+    env:
+      HAS_HOST: ${{ secrets.DEPLOY_HOST != '' }}
+    steps:
+      - name: Skip when no deploy target configured
+        if: env.HAS_HOST != 'true'
+        run: echo "No DEPLOY_HOST secret - skipping deploy. Image is in GHCR."
+      - name: Deploy over SSH and health-check
+        if: env.HAS_HOST == 'true'
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            IMG=ghcr.io/eswarsurya/docker-cicd-pipeline:${{ needs.build.outputs.tag }}
+            docker pull "$IMG"
+            docker rm -f incident-api 2>/dev/null || true
+            docker run -d --name incident-api --restart unless-stopped -p 80:8000 "$IMG"
+            for i in $(seq 1 20); do curl -fs localhost/health && exit 0; sleep 1; done
+            echo "health check failed" && docker logs incident-api && exit 1

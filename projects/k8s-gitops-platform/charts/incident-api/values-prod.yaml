@@ -1,0 +1,15 @@
+env:
+  APP_ENV: prod
+image:
+  tag: "latest"   # in real life: pin to a git SHA, bumped by CI
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 8
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+serviceMonitor:
+  enabled: true
+ingress:
+  enabled: true

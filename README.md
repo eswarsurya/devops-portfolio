@@ -1,26 +1,43 @@
 # DevOps & Cloud Engineering Portfolio
 
 **Eswar Surya Danaboina** · Dublin, Ireland  
-**Focus:** DevOps Engineering · AWS Cloud · Infrastructure as Code · CI/CD · Linux Automation · Platform Engineering
+**Focus:** DevOps Engineering · AWS Cloud · Infrastructure as Code · CI/CD · Linux Automation · Platform Engineering · AI-assisted operations
 
-This repository is being consolidated into a single, reviewable home for my DevOps labs and AI-assisted operations projects. I am importing the existing project source archives in stages and checking each import before marking it as published.
+One reviewable home for my DevOps labs and AI-assisted operations projects. Each project lives in `projects/<name>/` with its own README (architecture, setup, tests, cleanup) and its own CI workflow in `.github/workflows/<name>-ci.yml`, which only runs when that project changes.
 
-## Current repository status
+## Flagship projects
 
-- **Ansible Linux Hardening:** submitted for review in [PR #1](https://github.com/eswarsurya/devops-portfolio/pull/1). The branch contains the lab source and root-level CI workflow. GitHub Actions syntax/lint checks passed; real disposable-VM validation is still pending.
-- **Other projects:** their source archives have been supplied for consolidation, but their folders are not yet present on `main`. They are intentionally not linked as if they were already published.
+| Project | What it is | CI |
+|---|---|---|
+| [**AIOps Triage Agent**](projects/aiops-triage-agent) | AI on-call assistant: an Alertmanager alert triggers a Claude agent that investigates Kubernetes with **read-only** tools, streams each step live, and proposes a fix that runs **only after human approval** | ![aiops-triage-agent](https://github.com/eswarsurya/devops-portfolio/actions/workflows/aiops-triage-agent-ci.yml/badge.svg) |
+| [**Rail Pulse**](projects/rail-pulse) | Live Irish Rail punctuality monitor run as an SRE service: live map, 85% SLO, Prometheus alerts (unit-tested with promtool), Grafana, live-feed contract test | ![rail-pulse](https://github.com/eswarsurya/devops-portfolio/actions/workflows/rail-pulse-ci.yml/badge.svg) |
+| [**LLM Gateway**](projects/llm-gateway) | Control plane for company Claude API use: team keys, rate limits, monthly budgets, Irish/EU PII redaction, per-team cache, live cost dashboard | ![llm-gateway](https://github.com/eswarsurya/devops-portfolio/actions/workflows/llm-gateway-ci.yml/badge.svg) |
+| [**DevOps MCP Server**](projects/devops-mcp-server) | MCP server giving AI assistants read-only, SSRF-safe checks of sites, TLS, Prometheus, Kubernetes and CI | ![devops-mcp-server](https://github.com/eswarsurya/devops-portfolio/actions/workflows/devops-mcp-server-ci.yml/badge.svg) |
 
-## Projects queued for import
+## Foundations
 
-1. AWS S3 Backup & Restore
-2. Docker CI/CD Pipeline
-3. Terraform AWS Web Stack
-4. Kubernetes GitOps Platform
-5. CI Log Doctor
-6. AIOps Triage Agent
-7. Rail Pulse
-8. LLM Gateway
-9. DevOps MCP Server
+| Project | What it is | CI |
+|---|---|---|
+| [**Kubernetes GitOps Platform**](projects/k8s-gitops-platform) | Hardened Helm chart, Argo CD app-of-apps, HPA/PDB/NetworkPolicy, kube-prometheus-stack; CI installs it on a real 3-node kind cluster | ![k8s-gitops-platform](https://github.com/eswarsurya/devops-portfolio/actions/workflows/k8s-gitops-platform-ci.yml/badge.svg) |
+| [**Terraform AWS Web Stack**](projects/terraform-aws-webstack) | VPC across 2 AZs, ALB and a self-healing ASG as Terraform modules, S3 remote state, `terraform test` with a mocked provider | ![terraform-aws-webstack](https://github.com/eswarsurya/devops-portfolio/actions/workflows/terraform-aws-webstack-ci.yml/badge.svg) |
+| [**Docker CI/CD Pipeline**](projects/docker-cicd-pipeline) | Containerised API: lint, test, container smoke test, Trivy scan, GHCR, gated EC2 deploy | ![docker-cicd-pipeline](https://github.com/eswarsurya/devops-portfolio/actions/workflows/docker-cicd-pipeline-ci.yml/badge.svg) |
+| [**CI Log Doctor**](projects/ci-log-doctor) | When any project's CI fails, Claude reads the redacted logs and comments root cause and fix on the PR | ![ci-log-doctor](https://github.com/eswarsurya/devops-portfolio/actions/workflows/ci-log-doctor-ci.yml/badge.svg) |
+| [**AWS S3 Backup & Restore**](projects/aws-s3-backup) | Bash backup with checksums, encryption, upload verification, IAM role (no keys), lifecycle retention | ![aws-s3-backup](https://github.com/eswarsurya/devops-portfolio/actions/workflows/aws-s3-backup-ci.yml/badge.svg) |
+| **Ansible Linux Hardening** | SSH hardening and host audit role | In review: [PR #1](https://github.com/eswarsurya/devops-portfolio/pull/1) |
+
+**How they fit together:** the pipeline builds the image; Terraform or the GitOps platform runs it; Prometheus watches it; the AIOps agent investigates when it breaks; the MCP server lets an assistant check it safely; the LLM gateway controls what all the AI calls cost; and CI Log Doctor explains any red build in this repo.
+
+## Evidence status
+
+I keep three kinds of evidence separate, and only claim what I can show:
+
+| Evidence | Status |
+|---|---|
+| **Local tests** | All passing at import: 104 Python tests, 7 Bash tests, 4 Terraform tests, Prometheus alert-rule tests, Kubernetes schema validation of every chart environment |
+| **CI (GitHub Actions)** | Runs per project on this repo. The badges above show the current result. |
+| **Real cloud / cluster deployment** | **Not yet claimed.** Each README has deploy and teardown steps. I'll add screenshots under each project's `docs/` as I run them. |
+
+Demos that run locally with no cloud account: AIOps Triage (`python -m triage.demo --replay`), Rail Pulse (live Irish Rail data), LLM Gateway (mock upstream), and the MCP server (Claude Code / Claude Desktop).
 
 ## Engineering and evidence standards
 
