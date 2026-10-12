@@ -14,6 +14,16 @@
     state: started
   when: linux_hardening_install_fail2ban
 
+# Ubuntu 24.04 starts sshd on demand (socket activation), so this directory may not exist yet.
+# sshd -t refuses to validate without it.
+- name: Ensure sshd privilege separation directory exists
+  ansible.builtin.file:
+    path: /run/sshd
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Install managed SSH hardening drop-in
   ansible.builtin.template:
     src: ssh-hardening.conf.j2
