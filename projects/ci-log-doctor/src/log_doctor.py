@@ -163,9 +163,31 @@ class GitHub:
         return [j for j in jobs.get("jobs", []) if j.get("conclusion") == "failure"]
 
     def job_log(self, job_id: int) -> str:
-        # GitHub answers with a redirect to a signed URL; urllib follows it.
-        raw = _request("GET", f"{GITHUB_API}/repos/{self.repo}/actions/jobs/{job_id}/logs", self.headers)
-        return raw.decode("utf-8", errors="replace")
+        # GitHub redirects to a short-lived signed URL. Do not forward the
+        # GitHub Authorization header to the storage host: some urllib redirect
+        # paths preserve it and the storage service rejects that request.
+        url = f"{GITHUB_API}/repos/{self.repo}/actions/jobs/{job_id}/logs"
+        request = urllib.request.Request(url, headers=self.headers)
+
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                return None
+
+        opener = urllib.request.build_opener(NoRedirect)
+        try:
+            with opener.open(request, timeout=60) as response:
+                return response.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as error:
+            if error.code not in (301, 302, 303, 307, 308):
+                raise
+            signed_url = error.headers.get("Location")
+            if not signed_url:
+                raise RuntimeError("GitHub log response redirected without a Location header") from error
+
+        # The signed URL carries its own temporary authorisation. Never attach
+        # GitHub credentials to this second request.
+        with urllib.request.urlopen(signed_url, timeout=60) as response:
+            return response.read().decode("utf-8", errors="replace")
 
     def upsert_pr_comment(self, pr: int, body: str) -> None:
         comments = self._get_json(f"/repos/{self.repo}/issues/{pr}/comments?per_page=100")
@@ -194,6 +216,20 @@ def run_in_actions() -> int:
     run = event["workflow_run"]
     gh = GitHub(os.environ["GITHUB_TOKEN"], os.environ["GITHUB_REPOSITORY"])
     api_key = os.getenv("ANTHROPIC_API_KEY")
+
+    if not api_key:
+        message = (
+            "## CI Log Doctor skipped: missing API key\n\n"
+            "The failed workflow logs were not downloaded or sent anywhere because "
+            "`ANTHROPIC_API_KEY` is not configured. Add it under Settings → Secrets "
+            "and variables → Actions to enable AI diagnosis. The underlying CI failure "
+            "still needs to be investigated separately.\n"
+        )
+        print(message)
+        if summary := os.getenv("GITHUB_STEP_SUMMARY"):
+            with open(summary, "a", encoding="utf-8") as summary_file:
+                summary_file.write(message)
+        return 0
 
     jobs = gh.failed_jobs(run["id"])
     if not jobs:
