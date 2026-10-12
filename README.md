@@ -3,36 +3,37 @@
 **Eswar Surya Danaboina** · Dublin, Ireland  
 **Focus:** DevOps Engineering · AWS Cloud · Infrastructure as Code · CI/CD · Linux Automation · Platform Engineering
 
-This repository brings together reproducible DevOps labs and AI-assisted operations projects. Each project should include its source code, setup instructions, validation commands, security notes, and clear evidence of what has actually been tested.
+This repository is being consolidated into a single, reviewable home for my DevOps labs and AI-assisted operations projects. I am importing the existing project source archives in stages and checking each import before marking it as published.
 
-## Projects
+## Current repository status
 
-| Project | Main technologies | Status |
-|---|---|---|
-| [Ansible Linux Hardening](projects/ansible-linux-hardening/README.md) | Ansible, Linux, SSH configuration, fail2ban | In review; CI syntax/lint passed, real-VM validation pending |
-| [AWS S3 Backup & Restore](projects/aws-s3-backup/README.md) | Bash, AWS CLI, S3, checksums, IAM | Import pending |
-| [Docker CI/CD Pipeline](projects/docker-cicd-pipeline/README.md) | Docker, FastAPI, GitHub Actions, Trivy, Prometheus | Import pending |
-| [Terraform AWS Web Stack](projects/terraform-aws-webstack/README.md) | Terraform, AWS VPC, ALB, ASG, remote state | Import pending |
-| [Kubernetes GitOps Platform](projects/k8s-gitops-platform/README.md) | Kubernetes, Helm, Argo CD, Prometheus | Import pending |
-| [CI Log Doctor](projects/ci-log-doctor/README.md) | GitHub Actions, Python, LLM-assisted log analysis | Import pending |
-| [AIOps Triage Agent](projects/aiops-triage-agent/README.md) | Python, Kubernetes, incident triage, human approval | Import pending |
-| [Rail Pulse](projects/rail-pulse/README.md) | API ingestion, SLI/SLO, Prometheus, Grafana | Import pending |
-| [LLM Gateway](projects/llm-gateway/README.md) | API gateway, rate limits, budgets, PII redaction | Import pending |
-| [DevOps MCP Server](projects/devops-mcp-server/README.md) | MCP, health checks, TLS, Prometheus, read-only tooling | Import pending |
+- **Ansible Linux Hardening:** submitted for review in [PR #1](https://github.com/eswarsurya/devops-portfolio/pull/1). The branch contains the lab source and root-level CI workflow. GitHub Actions syntax/lint checks passed; real disposable-VM validation is still pending.
+- **Other projects:** their source archives have been supplied for consolidation, but their folders are not yet present on `main`. They are intentionally not linked as if they were already published.
 
-> **Accuracy note:** A project marked “Import pending” is not yet present as a complete project in this repository. Do not treat its link as proof that the code has been published. These imports are the next consolidation task.
+## Projects queued for import
 
-## Evidence and security standards
+1. AWS S3 Backup & Restore
+2. Docker CI/CD Pipeline
+3. Terraform AWS Web Stack
+4. Kubernetes GitOps Platform
+5. CI Log Doctor
+6. AIOps Triage Agent
+7. Rail Pulse
+8. LLM Gateway
+9. DevOps MCP Server
 
-- Document local tests separately from GitHub Actions results and real VM/cloud deployments.
+## Engineering and evidence standards
+
+- Keep one canonical copy of each project; do not duplicate overlapping archive entries.
+- Include setup instructions, architecture, tests, troubleshooting, and cleanup steps.
+- Separate local test results, CI results, and real VM/cloud deployment evidence.
 - Never commit credentials, private keys, real inventories, environment files, or sensitive logs.
-- Prefer least-privilege IAM/RBAC, safe defaults, and explicit cleanup instructions.
-- Treat AI-driven remediation as human-approved and fail-closed by default.
-- Do not claim production usage or cloud deployment unless supported by verifiable evidence.
+- Use least privilege and safe defaults; AI-assisted remediation must fail closed and require approval.
+- Do not claim production use or cloud deployment without verifiable evidence.
 
 ## Contact
 
 - Email: [eswardanaboina@gmail.com](mailto:eswardanaboina@gmail.com)
 - LinkedIn: https://www.linkedin.com/in/eswarsurya76/
 - GitHub: https://github.com/eswarsurya
-- Existing portfolio: https://eswardanaboina.vercel.app/ (live site will not be replaced without review)
+- Existing portfolio: https://eswardanaboina.vercel.app/ (not replaced without review)
