@@ -155,9 +155,14 @@ def test_full_actions_flow(monkeypatch, tmp_path):
     assert "list not sorted" in summary.read_text()
 
 
-
 def test_missing_api_key_skips_log_download_and_writes_summary(monkeypatch, tmp_path):
-    event = {"workflow_run": {"id": 42, "html_url": "https://gh/run/42", "pull_requests": []}}
+    event = {
+        "workflow_run": {
+            "id": 42,
+            "html_url": "https://gh/run/42",
+            "pull_requests": [],
+        }
+    }
     ev = tmp_path / "event.json"
     ev.write_text(json.dumps(event))
     summary = tmp_path / "summary.md"
