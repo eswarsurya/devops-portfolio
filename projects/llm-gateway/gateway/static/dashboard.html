@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LLM Gateway · live</title>
+<style>
+  :root{--bg:#0c0d10;--panel:#15171c;--line:#262a33;--fg:#eceef2;--mute:#8d93a1;--ok:#3ecf8e;--warn:#f0b03d;--bad:#ff6b6b;--acc:#a78bfa;--mono:ui-monospace,Menlo,monospace}
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+  header{display:flex;align-items:center;gap:12px;padding:14px 22px;border-bottom:1px solid var(--line)}
+  header h1{margin:0;font-size:17px} .mute{color:var(--mute)} .sp{margin-left:auto}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-right:6px}
+  main{padding:20px 22px;display:grid;gap:18px}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+  .kpi .v{font-size:26px;font-weight:650;font-variant-numeric:tabular-nums} .kpi .l{font-size:12px;color:var(--mute)}
+  .grid{display:grid;grid-template-columns:360px 1fr;gap:18px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--mute);margin:0 0 12px}
+  .team{margin:0 0 14px} .team .top{display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px}
+  .bar{height:9px;background:var(--line);border-radius:5px;overflow:hidden} .bar i{display:block;height:100%;border-radius:5px;transition:width .4s}
+  table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+  th{text-align:left;color:var(--mute);font-weight:500;font-size:12px;padding:6px 8px;border-bottom:1px solid var(--line)}
+  td{padding:6px 8px;border-bottom:1px solid var(--line)} td.r,th.r{text-align:right}
+  tr.new{animation:flash 1s} @keyframes flash{from{background:#2a2346}}
+  .pill{font-size:11px;padding:1px 8px;border-radius:9px;border:1px solid var(--line)}
+  .ok{color:var(--ok);border-color:#1f5c42} .cache_hit{color:var(--acc);border-color:#4b3d80}
+  .rate_limited,.over_budget,.model_denied{color:var(--warn);border-color:#6b5020} [class*=upstream]{color:var(--bad)}
+  .pii{color:var(--warn);font-family:var(--mono);font-size:12px}
+  #login{max-width:360px;margin:80px auto;text-align:center} input,button{font:inherit;padding:8px 10px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
+  button{background:#5b45d6;border-color:#6d58e8;cursor:pointer}
+  @media (max-width:900px){.kpis{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><h1>⛩️ LLM Gateway</h1><span class="mute">keys · limits · budgets · PII · cache · cost</span><span class="sp mute"><span class="dot"></span><span id="st">live</span></span></header>
+<div id="login"><p class="mute">Admin token</p><input id="tok" type="password"> <button onclick="start()">Open</button><p id="err" style="color:var(--bad)"></p></div>
+<main id="app" style="display:none">
+  <div class="kpis">
+    <div class="kpi"><div class="v" id="k-req">0</div><div class="l">requests (recent window)</div></div>
+    <div class="kpi"><div class="v" id="k-cost">$0</div><div class="l">spend this month (all teams)</div></div>
+    <div class="kpi"><div class="v" id="k-cache">0%</div><div class="l">cache hit rate (recent)</div></div>
+    <div class="kpi"><div class="v" id="k-pii">0</div><div class="l">PII items redacted (recent)</div></div>
+  </div>
+  <div class="grid">
+    <div class="card"><h2>Budget used this month</h2><div id="teams"></div></div>
+    <div class="card"><h2>Live requests</h2>
+      <table><thead><tr><th>time</th><th>team</th><th>model</th><th>outcome</th><th class="r">tokens in/out</th><th class="r">cost</th><th class="r">ms</th><th>PII</th></tr></thead><tbody id="rows"></tbody></table>
+    </div>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let lastTop = 0;
+function render(s) {
+  const r = s.recent;
+  $("k-req").textContent = r.length;
+  $("k-cost").textContent = "$" + s.teams.reduce((a, t) => a + t.spent, 0).toFixed(4);
+  const served = r.filter(x => x.outcome === "ok" || x.outcome === "cache_hit");
+  $("k-cache").textContent = served.length ? Math.round(100 * served.filter(x => x.outcome === "cache_hit").length / served.length) + "%" : "0%";
+  $("k-pii").textContent = r.reduce((a, x) => a + (x.redactions || 0), 0);
+  $("teams").innerHTML = s.teams.map(t => {
+    const pct = Math.min(100, t.used_ratio * 100), col = pct > 90 ? "var(--bad)" : pct > 70 ? "var(--warn)" : "var(--ok)";
+    return `<div class="team"><div class="top"><b>${esc(t.team)}</b><span class="mute">$${t.spent.toFixed(4)} / $${t.budget}</span></div>
+      <div class="bar"><i style="width:${Math.max(pct, .5)}%;background:${col}"></i></div></div>`;
+  }).join("");
+  $("rows").innerHTML = r.map((x, i) => `<tr class="${x.ts > lastTop && i < 5 ? "new" : ""}">
+    <td class="mute">${new Date(x.ts * 1000).toLocaleTimeString()}</td><td>${esc(x.team)}</td><td class="mute">${esc((x.model || "").replace("claude-", ""))}</td>
+    <td><span class="pill ${esc(x.outcome)}">${esc(x.outcome.replace("_", " "))}</span></td>
+    <td class="r">${x.in != null ? `${x.in} / ${x.out}` : "–"}</td><td class="r">${x.cost != null ? "$" + x.cost.toFixed(5) : "–"}</td>
+    <td class="r">${x.ms ?? "–"}</td><td class="pii">${x.redactions ? "🛡 " + x.redactions : ""}</td></tr>`).join("");
+  if (r[0]) lastTop = r[0].ts;
+}
+function start() {
+  const tok = $("tok").value;
+  fetch(`/admin/summary?token=${encodeURIComponent(tok)}`).then(r => {
+    if (!r.ok) return r.json().then(j => { $("err").textContent = j.detail; });
+    $("login").style.display = "none"; $("app").style.display = "grid";
+    const es = new EventSource(`/admin/stream?token=${encodeURIComponent(tok)}`);
+    es.onmessage = e => render(JSON.parse(e.data));
+    es.onerror = () => $("st").textContent = "reconnecting…";
+  });
+}
+const qp = new URLSearchParams(location.search).get("token");
+if (qp) { $("tok").value = qp; start(); }
+</script>
+</body>
+</html>
