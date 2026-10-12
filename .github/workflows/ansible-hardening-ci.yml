@@ -48,9 +48,15 @@ jobs:
       - name: Install Ansible
         run: python3 -m pip install --user ansible-core
       - name: First apply
-        run: ansible-playbook -i ci/inventory.ini playbook.yml
+        run: |
+          set -o pipefail
+          ansible-playbook -i ci/inventory.ini playbook.yml 2>&1 | tee first-run.txt || {
+            echo "::error title=first apply::$(grep -E -A3 'fatal:|FAILED!|ERROR' first-run.txt | head -20 | tr '\n' '|')"
+            exit 1
+          }
       - name: Second apply must change nothing
         run: |
+          set -o pipefail
           ansible-playbook -i ci/inventory.ini playbook.yml | tee second-run.txt
           grep -Eq 'changed=0 +unreachable=0 +failed=0' second-run.txt || { echo "::error title=idempotency::second run made changes"; exit 1; }
       - name: Verify the host
