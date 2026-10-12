@@ -5,19 +5,19 @@
     state: present
     update_cache: true
     cache_valid_time: 3600
-  when: hardening_install_fail2ban
+  when: linux_hardening_install_fail2ban
 
 - name: Ensure fail2ban is enabled and running
   ansible.builtin.service:
     name: fail2ban
     enabled: true
     state: started
-  when: hardening_install_fail2ban
+  when: linux_hardening_install_fail2ban
 
 - name: Install managed SSH hardening drop-in
   ansible.builtin.template:
     src: ssh-hardening.conf.j2
-    dest: "{{ hardening_ssh_dropin_path }}"
+    dest: "{{ linux_hardening_ssh_dropin_path }}"
     owner: root
     group: root
     mode: "0644"
@@ -27,7 +27,7 @@
 - name: Install host audit helper
   ansible.builtin.copy:
     src: portfolio-host-audit
-    dest: "{{ hardening_audit_script_path }}"
+    dest: "{{ linux_hardening_audit_script_path }}"
     owner: root
     group: root
     mode: "0750"

@@ -2,7 +2,7 @@ name: Ansible Linux Hardening
 
 on:
   push:
-    branches: [main, build/ansible-hardening-and-project-hub]
+    branches: [main]
     paths:
       - "projects/ansible-linux-hardening/**"
       - ".github/workflows/ansible-hardening-ci.yml"
@@ -32,3 +32,30 @@ jobs:
         run: ansible-playbook -i localhost, -c local playbook.yml --syntax-check
       - name: Lint
         run: ansible-lint playbook.yml
+
+  converge:
+    # Applies the role for real to the runner (a throwaway Ubuntu VM), runs it twice to prove
+    # idempotency, then checks the resulting SSH and fail2ban state.
+    needs: lint
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: projects/ansible-linux-hardening
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare target (SSH server present, as on a normal Ubuntu server)
+        run: sudo apt-get update -q && sudo apt-get install -y -q openssh-server
+      - name: Install Ansible
+        run: python3 -m pip install --user ansible-core
+      - name: First apply
+        run: ansible-playbook -i ci/inventory.ini playbook.yml
+      - name: Second apply must change nothing
+        run: |
+          ansible-playbook -i ci/inventory.ini playbook.yml | tee second-run.txt
+          grep -Eq 'changed=0 +unreachable=0 +failed=0' second-run.txt || { echo "::error title=idempotency::second run made changes"; exit 1; }
+      - name: Verify the host
+        run: |
+          sudo sshd -T | grep -qx 'permitrootlogin no'
+          systemctl is-active --quiet fail2ban
+          sudo /usr/local/sbin/portfolio-host-audit
+          sudo ls /var/log/portfolio-hardening/
