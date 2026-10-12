@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aiops
+---
+# Create once (never commit real values):
+#   kubectl -n aiops create secret generic aiops-triage \
+#     --from-literal=ANTHROPIC_API_KEY=sk-ant-... \
+#     --from-literal=WEBHOOK_TOKEN=$(openssl rand -hex 16) \
+#     --from-literal=APPROVER_TOKEN=$(openssl rand -hex 16) \
+#     --from-literal=SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aiops-triage
+  namespace: aiops
+spec:
+  replicas: 1   # in-memory incident store; move to Redis before scaling out
+  selector:
+    matchLabels: { app: aiops-triage }
+  template:
+    metadata:
+      labels: { app: aiops-triage }
+    spec:
+      serviceAccountName: aiops-triage
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: app
+          image: ghcr.io/eswarsurya/aiops-triage-agent:latest
+          ports:
+            - { name: http, containerPort: 8080 }
+          envFrom:
+            - secretRef: { name: aiops-triage }
+          env:
+            - { name: PROMETHEUS_URL, value: "http://monitoring-kube-prometheus-prometheus.monitoring:9090" }
+            - { name: CLAUDE_MODEL, value: "claude-haiku-5-5" }
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aiops-triage
+  namespace: aiops
+spec:
+  selector: { app: aiops-triage }
+  ports:
+    - { name: http, port: 80, targetPort: http }
