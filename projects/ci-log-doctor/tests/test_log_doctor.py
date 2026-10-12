@@ -153,3 +153,25 @@ def test_full_actions_flow(monkeypatch, tmp_path):
     assert "list not sorted" in posted["body"]
     assert "lint" not in posted["body"]  # successful jobs are ignored
     assert "list not sorted" in summary.read_text()
+
+
+
+def test_missing_api_key_skips_log_download_and_writes_summary(monkeypatch, tmp_path):
+    event = {"workflow_run": {"id": 42, "html_url": "https://gh/run/42", "pull_requests": []}}
+    ev = tmp_path / "event.json"
+    ev.write_text(json.dumps(event))
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(ev))
+    monkeypatch.setenv("GITHUB_TOKEN", "t")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "o/r")
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("failed job logs must not be downloaded without an API key")
+
+    monkeypatch.setattr(ld.GitHub, "failed_jobs", fail_if_called)
+    assert ld.run_in_actions() == 0
+    output = summary.read_text()
+    assert "missing API key" in output
+    assert "ANTHROPIC_API_KEY" in output
