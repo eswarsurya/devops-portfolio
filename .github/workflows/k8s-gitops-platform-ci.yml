@@ -77,3 +77,7 @@ jobs:
         run: |
           kubectl -n demo describe pods
           kubectl -n demo get events --sort-by=.lastTimestamp
+          # Also surface the key facts as annotations, visible on the PR without opening logs
+          echo "::error title=pods::$(kubectl -n demo get pods -o wide 2>&1 | tr '\n' '|')"
+          echo "::error title=test pod logs::$(kubectl -n demo logs demo-incident-api-test 2>&1 | tail -10 | tr '\n' '|')"
+          echo "::error title=warnings::$(kubectl -n demo get events --field-selector type=Warning -o custom-columns=R:.reason,M:.message --no-headers 2>&1 | tail -8 | tr '\n' '|')"
