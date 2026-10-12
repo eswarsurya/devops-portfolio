@@ -12,6 +12,7 @@ Developers lose time scrolling 5,000-line CI logs to find the one line that matt
 - **Cheap and focused.** Only the lines around error markers plus the log tail are sent (capped at about 12k chars), using a small, fast model by default. A typical diagnosis costs a fraction of a cent.
 - **Safe trigger.** It runs on `workflow_run` from the default branch, so code in a PR can't change what the doctor does or read its secrets.
 - **Honest output.** The prompt tells the model to say when the log doesn't show the cause, and every comment carries a "verify before merging" note.
+- **Credential-safe fallback.** If `ANTHROPIC_API_KEY` is missing, the workflow writes a clear skip notice to the job summary and exits without downloading logs. Log downloads follow GitHub's signed redirect without forwarding the GitHub token to the storage host.
 - **No dependencies.** Python standard library only. Nothing to install, nothing to keep patched.
 
 ## How it works
@@ -49,7 +50,7 @@ pytest -q tests demo                                                    # 19 tes
 
 ## Use it in a repo
 
-1. Add the secret **`ANTHROPIC_API_KEY`** (Settings → Secrets → Actions). Set a monthly spend limit in the Anthropic console.
+1. Add the secret **`ANTHROPIC_API_KEY`** (Settings → Secrets and variables → Actions). Set a monthly spend limit in the Anthropic console. If the secret is absent, the diagnostic workflow skips safely and records the reason in the job summary.
 2. Push to `main` (the `workflow_run` trigger only works from the default branch).
 3. Open a PR that breaks something, for example change `0.1` to `0.2` in `demo/sla.py`. CI fails, and within a minute the diagnosis appears on the PR.
 
