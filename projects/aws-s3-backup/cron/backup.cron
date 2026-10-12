@@ -1,0 +1,8 @@
+# Install with: crontab cron/backup.cron   (or copy to /etc/cron.d/ and add a user column)
+# Runs every night at 02:00. cron has a tiny PATH, so set it explicitly.
+PATH=/usr/local/bin:/usr/bin:/bin
+SOURCE_DIR=/var/www
+BUCKET=REPLACE_BUCKET_NAME
+LOG_FILE=/var/log/s3-backup.log
+
+0 2 * * * /opt/aws-s3-backup/scripts/backup.sh >> /var/log/s3-backup.cron.log 2>&1
