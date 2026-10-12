@@ -1,6 +1,6 @@
 # terraform-aws-webstack
 
-A highly available web tier on AWS, built entirely with Terraform: a VPC across two availability zones, an Application Load Balancer, and an Auto Scaling Group that self-heals and scales on CPU. State is remote in S3 with locking, and every change is format-checked, validated, unit-tested and security-scanned in CI.
+A web tier on AWS, built with Terraform: a VPC across two availability zones, an Application Load Balancer, and an Auto Scaling Group. State is remote in S3 with locking, and CI runs format checks, validation, unit tests, and a Trivy IaC scan. The scanner currently reports CRITICAL/HIGH findings but does not fail the workflow; see the workflow configuration.
 
 ![terraform-aws-webstack](https://github.com/eswarsurya/devops-portfolio/actions/workflows/terraform-aws-webstack-ci.yml/badge.svg)
 
@@ -34,7 +34,7 @@ bootstrap/            one-time: S3 bucket for remote state (prevent_destroy)
 modules/network/      VPC, IGW, 2 public subnets across 2 AZs, routes
 modules/web/          SGs, ALB, target group, launch template, ASG, scaling policy
 envs/dev/             wires modules together, S3 backend, default tags
-envs/dev/tests/       `terraform test` with a mocked AWS provider (no account needed)
+envs/dev/tests/       terraform test with a mocked AWS provider (no account needed)
 (CI: /.github/workflows/terraform-aws-webstack-ci.yml) fmt + validate + test + Trivy IaC scan
 ```
 
@@ -43,12 +43,12 @@ envs/dev/tests/       `terraform test` with a mocked AWS provider (no account ne
 - **Modules + envs split.** Adding `envs/prod` means a new folder with different sizes, not copy-pasted resources.
 - **Remote state with locking.** S3 with `use_lockfile` (Terraform 1.10+), so two people can't apply at once. Versioning lets you roll back a broken state file.
 - **Security groups reference each other.** The app SG allows only the ALB's SG, not a CIDR. A unit test enforces this.
-- **IMDSv2 required.** This blocks the SSRF-to-credentials attack (the Capital One breach pattern). It's tested too.
-- **ELB health checks on the ASG.** If the app dies but the VM is fine, the ASG still replaces it.
+- **IMDSv2 required.** This reduces exposure to some SSRF-to-metadata credential attacks. It is not a substitute for application-level SSRF defenses.
+- **ELB health checks on the ASG.** If the app dies but the VM is fine, the ASG can replace it.
 - **Instance refresh.** Changing the image rolls instances gradually, keeping 50% healthy.
-- **No NAT gateway.** It costs about $35 a month for a demo. The instances are public-subnet, but unreachable except through the ALB. In production I'd use private subnets plus NAT or VPC endpoints.
-- **AMI from SSM.** Always the latest Amazon Linux 2023, never a hard-coded AMI ID.
-- **`default_tags`.** Every resource is tagged, so cost tracking and cleanup are easy.
+- **No NAT gateway.** This avoids the NAT gateway's hourly and data-processing charges in a demo. The instances are in public subnets and require public addressing/egress to pull images and install packages; inbound application traffic is restricted by the instance security group to the ALB. This is a cost-conscious lab trade-off, not a recommended production network design. For production, prefer private application subnets with NAT or appropriate VPC endpoints and a reviewed egress policy.
+- **AMI from SSM.** Uses the latest Amazon Linux 2023 image resolved from SSM rather than a hard-coded AMI ID.
+- **`default_tags`.** Tags resources for cost tracking and cleanup.
 
 ## Test it (no AWS account)
 
@@ -56,12 +56,14 @@ envs/dev/tests/       `terraform test` with a mocked AWS provider (no account ne
 cd envs/dev
 terraform init -backend=false
 terraform validate
-terraform test        # 4 passed: 2 AZs, ALB-only ingress, IMDSv2, health path, ASG cap
+terraform test
 ```
 
-## Deploy it (keep it under an hour, costs well under €1)
+The README and test output should be used as the source of truth for the current number of passing tests; do not infer test success from the existence of this documentation.
 
-The ALB is billed by the hour (about €0.025/hr) and t3.micro instances are free-tier eligible. **Apply, screenshot, destroy.**
+## Deploy it (costs vary)
+
+AWS charges vary by region, resource usage, data transfer, and account/free-tier eligibility. The ALB and EC2 instances can incur charges while running; the amount is **not guaranteed to stay below €1**, even for a short demonstration. Check current AWS pricing and your Billing console before applying. Set a budget alert if available, record the start time, and destroy resources immediately after testing.
 
 ```bash
 # 1. Once: state bucket
@@ -76,8 +78,8 @@ terraform plan -out=tfplan
 terraform apply tfplan
 curl "$(terraform output -raw url)/health"
 
-# 3. Prove self-healing for your screenshots / demo video:
-#    terminate one instance in the console → ALB keeps serving → ASG launches a replacement
+# 3. Optional demonstration: terminate one instance and observe ASG replacement.
+# This incurs charges while resources are running.
 ```
 
 ## Teardown
@@ -85,7 +87,7 @@ curl "$(terraform output -raw url)/health"
 ```bash
 cd envs/dev && terraform destroy
 # Only when you're completely done with the project:
-# remove `prevent_destroy` in bootstrap/main.tf, empty the bucket (all versions), then:
+# remove prevent_destroy in bootstrap/main.tf, empty the bucket (all versions), then:
 cd ../../bootstrap && terraform destroy
 ```
 
