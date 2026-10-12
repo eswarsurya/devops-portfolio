@@ -48,14 +48,14 @@ jobs:
         run: docker build -t "$IMAGE:${GITHUB_SHA::7}" -t "$IMAGE:latest" .
       - name: Smoke test
         run: |
-          fail() { echo "::error title=smoke test::$1 | status: $(docker ps -a --filter name=t --format '{{.Status}}') | logs: $(docker logs t 2>&1 | tail -15 | tr '\n' '|')"; exit 1; }
+          fail() { echo "::error title=smoke test::$1 | status: $(docker ps -a --filter name=aiops-smoke --format '{{.Status}}') | logs: $(docker logs aiops-smoke 2>&1 | tail -15 | tr '\n' '|')"; exit 1; }
           docker images "$IMAGE"
-          run_out=$(docker run -d --name t -p 18080:8080 "$IMAGE:latest" 2>&1) || fail "docker run failed: $run_out"
+          run_out=$(docker run -d --name aiops-smoke -p 18080:8080 "$IMAGE:latest" 2>&1) || fail "docker run failed: $run_out"
           ok=0
           for _ in $(seq 1 30); do curl -fs localhost:18080/health && ok=1 && break; sleep 1; done
           [ "$ok" = 1 ] || fail "/health never answered"
           curl -fs localhost:18080/ | grep -q "AIOps Triage" || fail "dashboard page missing"
-          out=$(docker exec t kubectl version --client 2>&1) || fail "kubectl inside image: $out"
+          out=$(docker exec aiops-smoke kubectl version --client 2>&1) || fail "kubectl inside image: $out"
           echo "$out"
       - name: Push (main only)
         if: github.ref == 'refs/heads/main'
