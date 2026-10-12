@@ -1,0 +1,49 @@
+# Prometheus alerting rules: SLO-style alerts on the punctuality SLI and on the pipeline itself.
+groups:
+  - name: rail-pulse.slo
+    rules:
+      # SLO: 85% of running trains within their on-time threshold
+      - alert: PunctualityBelowSLO
+        expr: avg_over_time(railpulse_on_time_ratio{category="all"}[15m]) < 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Network punctuality {{ $value | humanizePercentage }} over 15m (SLO 85%)"
+
+      - alert: DartPunctualityCritical
+        expr: avg_over_time(railpulse_on_time_ratio{category="DART"}[15m]) < 0.70
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DART punctuality {{ $value | humanizePercentage }} over 15m"
+
+  - name: rail-pulse.pipeline
+    rules:
+      # Our own reliability: is the data fresh?
+      - alert: FeedStale
+        expr: time() - railpulse_last_success_timestamp_seconds > 300
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No successful Irish Rail poll for {{ $value | humanizeDuration }}"
+
+      - alert: FeedErrorRateHigh
+        expr: |
+          sum(rate(railpulse_polls_total{result="error"}[10m]))
+            / sum(rate(railpulse_polls_total[10m])) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than half of feed polls failing"
+
+      - alert: RailPulseDown
+        expr: up{job="rail-pulse"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "rail-pulse target down"

@@ -1,0 +1,53 @@
+# Unit tests for the alert rules:  promtool test rules deploy/alerts_test.yml
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Polls stop succeeding at t=0: the timestamp stays at 0 while time() moves on
+  - interval: 1m
+    input_series:
+      - series: 'railpulse_last_success_timestamp_seconds{job="rail-pulse"}'
+        values: "0x15"
+    alert_rule_test:
+      - eval_time: 4m          # 240s old: not stale yet
+        alertname: FeedStale
+        exp_alerts: []
+      - eval_time: 8m          # >300s for >2m: fires
+        alertname: FeedStale
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: rail-pulse
+            exp_annotations:
+              summary: "No successful Irish Rail poll for 8m 0s"
+
+  # Punctuality sits at 70% for 30 minutes: below the 85% SLO
+  - interval: 1m
+    input_series:
+      - series: 'railpulse_on_time_ratio{category="all",job="rail-pulse"}'
+        values: "0.70x30"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: PunctualityBelowSLO
+        exp_alerts: []       # inside the 'for: 10m' window
+      - eval_time: 20m
+        alertname: PunctualityBelowSLO
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              category: all
+              job: rail-pulse
+            exp_annotations:
+              summary: "Network punctuality 70% over 15m (SLO 85%)"
+
+  # Healthy network: no alert
+  - interval: 1m
+    input_series:
+      - series: 'railpulse_on_time_ratio{category="all",job="rail-pulse"}'
+        values: "0.93x30"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: PunctualityBelowSLO
+        exp_alerts: []
