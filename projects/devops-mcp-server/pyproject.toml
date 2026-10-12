@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "devops-mcp-server"
+version = "0.1.0"
+description = "Read-only, SSRF-safe DevOps tools for AI assistants over the Model Context Protocol"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = ["mcp>=2.2,<3"]
+
+[project.scripts]
+devops-mcp = "devops_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["devops_mcp"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = ["ignore::DeprecationWarning"]
