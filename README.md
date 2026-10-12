@@ -23,7 +23,7 @@ One reviewable home for my DevOps labs and AI-assisted operations projects. Each
 | [**Docker CI/CD Pipeline**](projects/docker-cicd-pipeline) | Containerised API: lint, test, container smoke test, Trivy scan, GHCR, gated EC2 deploy | ![docker-cicd-pipeline](https://github.com/eswarsurya/devops-portfolio/actions/workflows/docker-cicd-pipeline-ci.yml/badge.svg) |
 | [**CI Log Doctor**](projects/ci-log-doctor) | When any project's CI fails, Claude reads the redacted logs and comments root cause and fix on the PR | ![ci-log-doctor](https://github.com/eswarsurya/devops-portfolio/actions/workflows/ci-log-doctor-ci.yml/badge.svg) |
 | [**AWS S3 Backup & Restore**](projects/aws-s3-backup) | Bash backup with checksums, encryption, upload verification, IAM role (no keys), lifecycle retention | ![aws-s3-backup](https://github.com/eswarsurya/devops-portfolio/actions/workflows/aws-s3-backup-ci.yml/badge.svg) |
-| **Ansible Linux Hardening** | SSH hardening and host audit role | In review: [PR #1](https://github.com/eswarsurya/devops-portfolio/pull/1) |
+| [**Ansible Linux Hardening**](projects/ansible-linux-hardening) | Ansible role that disables SSH root and password login and installs a host audit script; syntax-checked and linted in CI | ![ansible-hardening](https://github.com/eswarsurya/devops-portfolio/actions/workflows/ansible-hardening-ci.yml/badge.svg) |
 
 **How they fit together:** the pipeline builds the image; Terraform or the GitOps platform runs it; Prometheus watches it; the AIOps agent investigates when it breaks; the MCP server lets an assistant check it safely; the LLM gateway controls what all the AI calls cost; and CI Log Doctor explains any red build in this repo.
 

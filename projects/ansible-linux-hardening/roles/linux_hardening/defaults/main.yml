@@ -1,0 +1,5 @@
+---
+linux_hardening_install_fail2ban: true
+linux_hardening_disable_password_auth: false
+linux_hardening_ssh_dropin_path: /etc/ssh/sshd_config.d/60-portfolio-hardening.conf
+linux_hardening_audit_script_path: /usr/local/sbin/portfolio-host-audit

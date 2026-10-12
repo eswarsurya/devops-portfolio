@@ -1,0 +1,6 @@
+inventory.ini
+*.retry
+*.log
+reports/
+.venv/
+__pycache__/
