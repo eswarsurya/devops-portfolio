@@ -1,0 +1,14 @@
+---
+- name: Apply reviewable baseline to Ubuntu lab hosts
+  hosts: linux_targets
+  become: true
+  gather_facts: true
+  pre_tasks:
+    - name: Ensure this playbook is only used on Ubuntu
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == "Ubuntu"
+          - ansible_service_mgr == "systemd"
+        fail_msg: "This lab currently supports Ubuntu hosts using systemd only."
+  roles:
+    - linux_hardening

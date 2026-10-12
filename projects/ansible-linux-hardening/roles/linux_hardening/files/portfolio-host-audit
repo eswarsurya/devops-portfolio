@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 077
+out_dir="/var/log/portfolio-hardening"
+mkdir -p "$out_dir"
+stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+out="$out_dir/audit-$stamp.txt"
+{
+  printf 'Host audit (UTC): %s\n' "$stamp"
+  printf 'Hostname: %s\n' "$(hostname)"
+  printf '\nOS release:\n'
+  if [[ -r /etc/os-release ]]; then . /etc/os-release; printf '%s %s\n' "${PRETTY_NAME:-unknown}" "${VERSION_ID:-}"; else printf 'unavailable\n'; fi
+  printf '\nKernel: %s\n' "$(uname -r)"
+  printf '\nDisk usage:\n'; df -h /
+  printf '\nFailed services:\n'
+  if command -v systemctl >/dev/null 2>&1; then systemctl --failed --no-legend || true; fi
+  printf '\nSSH effective security settings:\n'
+  if command -v sshd >/dev/null 2>&1; then sshd -T 2>/dev/null | grep -E '^(permitrootlogin|passwordauthentication|kbdinteractiveauthentication) ' || true; fi
+} > "$out"
+chmod 0600 "$out"
+printf 'Audit report written: %s\n' "$out"

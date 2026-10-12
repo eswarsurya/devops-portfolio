@@ -1,0 +1,10 @@
+---
+- name: Validate and reload SSH
+  block:
+    - name: Validate active SSH configuration
+      ansible.builtin.command: /usr/sbin/sshd -t
+      changed_when: false
+    - name: Reload SSH service
+      ansible.builtin.service:
+        name: ssh
+        state: reloaded

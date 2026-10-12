@@ -1,0 +1,6 @@
+# Managed by Ansible. Confirm key-based recovery before changing authentication.
+PermitRootLogin no
+{% if hardening_disable_password_auth | bool %}
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+{% endif %}
