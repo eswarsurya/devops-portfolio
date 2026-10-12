@@ -1,0 +1,79 @@
+name: k8s-gitops-platform
+
+on:
+  push:
+    branches: [main]
+    paths: ["projects/k8s-gitops-platform/**", ".github/workflows/k8s-gitops-platform-ci.yml"]
+  pull_request:
+    paths: ["projects/k8s-gitops-platform/**", ".github/workflows/k8s-gitops-platform-ci.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # 1. Static checks: lint the chart, render every environment, validate against k8s schemas
+  static:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/k8s-gitops-platform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo mv kubeconform /usr/local/bin/
+      - name: Helm lint
+        run: helm lint charts/incident-api --strict
+      - name: Render and validate every environment
+        run: |
+          for f in values.yaml values-dev.yaml values-prod.yaml ci-values.yaml; do
+            echo "== $f"
+            helm template demo charts/incident-api -f "charts/incident-api/$f" \
+              | kubeconform -strict -summary -kubernetes-version 1.31.0 -skip ServiceMonitor
+          done
+      - name: Validate Argo CD Applications against their CRD schema
+        run: |
+          kubeconform -strict -summary -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            argocd/
+
+  # 2. Real cluster test: spin up kind, install the chart, wait for rollout, run helm test
+  kind-test:
+    needs: static
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/k8s-gitops-platform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+      - uses: helm/kind-action@v1
+        with:
+          config: projects/k8s-gitops-platform/kind/cluster.yaml
+          cluster_name: gitops-lab
+      - name: Install chart
+        run: |
+          helm install demo charts/incident-api -f charts/incident-api/ci-values.yaml \
+            --namespace demo --create-namespace --wait --timeout 3m
+      - name: Pods spread across both workers
+        run: kubectl -n demo get pods -o wide
+      - name: Helm test (in-cluster HTTP check through the Service)
+        run: helm test demo -n demo --logs
+      - name: Rolling update keeps it available
+        run: |
+          helm upgrade demo charts/incident-api -f charts/incident-api/ci-values.yaml \
+            -n demo --set env.APP_ENV=upgraded --wait --timeout 3m
+          kubectl -n demo rollout status deploy/demo-incident-api
+          helm test demo -n demo
+      - name: Debug on failure
+        if: failure()
+        run: |
+          kubectl -n demo describe pods
+          kubectl -n demo get events --sort-by=.lastTimestamp
