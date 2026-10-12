@@ -1,0 +1,46 @@
+name: ci-log-doctor-diagnose
+
+# Runs AFTER any project's CI finishes. When one fails, Claude reads the failed
+# job logs (secrets redacted) and comments root cause + fix on the PR.
+# workflow_run only fires for workflow files on the default branch, so this
+# starts working once it is merged to main.
+on:
+  workflow_run:
+    workflows:
+      - aws-s3-backup
+      - docker-cicd-pipeline
+      - terraform-aws-webstack
+      - k8s-gitops-platform
+      - ci-log-doctor
+      - aiops-triage-agent
+      - rail-pulse
+      - llm-gateway
+      - devops-mcp-server
+    types: [completed]
+
+permissions:
+  actions: read         # read the failed run's jobs and logs
+  pull-requests: write  # comment on the PR
+  issues: write         # PR comments use the issues API
+
+jobs:
+  diagnose:
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: projects/ci-log-doctor
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}  # run trusted code from main, never the PR's
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Diagnose failure with Claude
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_MODEL: claude-haiku-5-5
+        run: python src/log_doctor.py
