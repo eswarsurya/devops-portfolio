@@ -1,0 +1,114 @@
+// Delivery pipeline for incident-api (projects/docker-cicd-pipeline).
+// Test -> build -> scan -> push -> staging -> approval -> production.
+// Each deploy health-checks the new container and rolls back to the previous image if it fails.
+
+pipeline {
+  agent any
+
+  options {
+    timestamps()
+    timeout(time: 30, unit: 'MINUTES')
+    disableConcurrentBuilds()
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+  }
+
+  parameters {
+    booleanParam(name: 'AUTO_APPROVE', defaultValue: false,
+      description: 'Skip the manual production approval. Used by the automated CI check.')
+    booleanParam(name: 'SIMULATE_BAD_RELEASE', defaultValue: false,
+      description: 'Deploy an image that fails its health check, to prove the rollback.')
+  }
+
+  environment {
+    APP_DIR = 'projects/docker-cicd-pipeline'
+    PIPE_DIR = 'projects/jenkins-pipeline'
+    REGISTRY = 'localhost:5001'
+    TRIVY_IMAGE = 'aquasec/trivy:0.73.0'
+  }
+
+  stages {
+    stage('Prepare') {
+      steps {
+        script {
+          env.SHORT_SHA = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+          env.IMAGE = "${env.REGISTRY}/incident-api:${env.SHORT_SHA}-${env.BUILD_NUMBER}"
+          env.DEPLOY_IMAGE = env.IMAGE
+          currentBuild.description = env.IMAGE
+        }
+      }
+    }
+
+    stage('Lint and unit tests') {
+      steps {
+        sh 'docker build --pull -f "$PIPE_DIR/ci/test.Dockerfile" "$APP_DIR"'
+      }
+    }
+
+    stage('Build image') {
+      steps {
+        sh 'docker build --build-arg APP_VERSION="$SHORT_SHA" -t "$IMAGE" "$APP_DIR"'
+      }
+    }
+
+    stage('Security scan') {
+      steps {
+        // Report-only for the demo. Set --exit-code 1 to block releases with HIGH/CRITICAL findings.
+        sh '''
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY_IMAGE" \
+            image --no-progress --severity HIGH,CRITICAL --exit-code 0 "$IMAGE" > trivy-report.txt
+        '''
+        archiveArtifacts artifacts: 'trivy-report.txt'
+      }
+    }
+
+    stage('Push to registry') {
+      steps {
+        sh 'docker push "$IMAGE"'
+      }
+    }
+
+    stage('Bad release (demo only)') {
+      when { expression { params.SIMULATE_BAD_RELEASE } }
+      steps {
+        script {
+          env.DEPLOY_IMAGE = "${env.IMAGE}-broken"
+        }
+        // Same image, but the process exits immediately, so the health check can never pass.
+        sh 'printf "FROM %s\\nCMD [\\"false\\"]\\n" "$IMAGE" | docker build -t "$DEPLOY_IMAGE" -'
+      }
+    }
+
+    stage('Deploy to staging') {
+      steps {
+        sh '"$PIPE_DIR/scripts/deploy.sh" staging "$DEPLOY_IMAGE"'
+      }
+    }
+
+    stage('Approve production') {
+      when { expression { !params.AUTO_APPROVE } }
+      steps {
+        timeout(time: 1, unit: 'HOURS') {
+          input message: "Staging is healthy on ${env.DEPLOY_IMAGE}. Deploy to production?", ok: 'Deploy'
+        }
+      }
+    }
+
+    stage('Deploy to production') {
+      steps {
+        sh '"$PIPE_DIR/scripts/deploy.sh" production "$DEPLOY_IMAGE"'
+      }
+    }
+  }
+
+  post {
+    success {
+      echo "Released ${env.DEPLOY_IMAGE} to staging and production."
+    }
+    failure {
+      echo 'Release stopped. Any environment this build touched was rolled back to its previous version.'
+    }
+    always {
+      sh 'docker image prune -f > /dev/null || true'
+    }
+  }
+}

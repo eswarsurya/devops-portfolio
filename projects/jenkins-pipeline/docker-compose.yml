@@ -1,0 +1,41 @@
+# Local Jenkins + image registry.
+#   JENKINS_ADMIN_PASSWORD=<choose one> DOCKER_GID=$(stat -c %g /var/run/docker.sock) docker compose up -d --build
+# Jenkins: http://localhost:8080 (user admin). Registry: localhost:5001.
+name: jenkins-demo
+
+services:
+  jenkins:
+    build: ./jenkins
+    image: jenkins-demo:local
+    ports:
+      - "8080:8080"
+    environment:
+      JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:?set JENKINS_ADMIN_PASSWORD}
+      GIT_BRANCH_SPEC: ${GIT_BRANCH_SPEC:-*/main}
+      CASC_JENKINS_CONFIG: /casc/casc.yaml
+      JAVA_OPTS: >-
+        -Djenkins.install.runSetupWizard=false
+        -Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true
+    # Lets the jenkins user use the host's Docker socket.
+    group_add:
+      - "${DOCKER_GID:-0}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../..:/repo:ro
+      - ./jenkins/casc.yaml:/casc/casc.yaml:ro
+      - jenkins_home:/var/jenkins_home
+    networks: [demo]
+
+  registry:
+    image: registry:2.8.3
+    # 5001, not 5000: macOS uses port 5000 for AirPlay.
+    ports:
+      - "5001:5000"
+    networks: [demo]
+
+networks:
+  demo:
+    name: jenkins-demo
+
+volumes:
+  jenkins_home: {}

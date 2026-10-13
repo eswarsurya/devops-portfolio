@@ -1,0 +1,114 @@
+name: jenkins-pipeline
+
+on:
+  push:
+    branches: [main, "build/jenkins-pipeline"]
+    paths:
+      - "projects/jenkins-pipeline/**"
+      - "projects/docker-cicd-pipeline/**"
+      - ".github/workflows/jenkins-pipeline-ci.yml"
+  pull_request:
+    paths:
+      - "projects/jenkins-pipeline/**"
+      - "projects/docker-cicd-pipeline/**"
+      - ".github/workflows/jenkins-pipeline-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/jenkins-pipeline
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck
+        run: shellcheck scripts/*.sh ci/*.sh
+      - name: Compose file is valid
+        run: JENKINS_ADMIN_PASSWORD=x docker compose config --quiet
+
+  # Starts a real Jenkins (configured as code), runs the pipeline twice and checks the results:
+  #   1. a good release reaches staging and production
+  #   2. a broken release fails its health check in staging, is rolled back, and never reaches production
+  end-to-end:
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: projects/jenkins-pipeline
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Give Jenkins a branch to build and a throwaway password
+        run: |
+          git checkout -B jenkins-ci
+          pw=$(openssl rand -hex 16)
+          echo "::add-mask::$pw"
+          echo "JENKINS_ADMIN_PASSWORD=$pw" >> "$GITHUB_ENV"
+
+      - name: Start Jenkins and the registry
+        run: |
+          DOCKER_GID=$(stat -c %g /var/run/docker.sock) GIT_BRANCH_SPEC='*/jenkins-ci' \
+            docker compose up -d --build
+
+      - name: Wait until Jenkins has loaded its configuration and job
+        run: |
+          for _ in $(seq 1 90); do
+            curl -fs -u "admin:$JENKINS_ADMIN_PASSWORD" localhost:8080/job/incident-api/api/json >/dev/null && exit 0
+            sleep 3
+          done
+          echo "::error title=Jenkins::job never appeared | $(docker compose logs --tail 30 jenkins 2>&1 | tr '\n' '|')"
+          exit 1
+
+      - name: Validate the Jenkinsfile with Jenkins' own linter
+        run: |
+          jar=$(mktemp)
+          crumb=$(curl -fsS -u "admin:$JENKINS_ADMIN_PASSWORD" -c "$jar" localhost:8080/crumbIssuer/api/json |
+            python3 -c 'import sys, json; d = json.load(sys.stdin); print(d["crumbRequestField"] + ":" + d["crumb"])')
+          out=$(curl -fsS -u "admin:$JENKINS_ADMIN_PASSWORD" -b "$jar" -H "$crumb" \
+            -F "jenkinsfile=<Jenkinsfile" localhost:8080/pipeline-model-converter/validate)
+          echo "$out"
+          echo "$out" | grep -q "successfully validated"
+
+      - name: Run 1 - good release goes to staging and production
+        run: |
+          ./ci/run-pipeline.sh AUTO_APPROVE=true || {
+            echo "::error title=good release::$(tail -40 build-*.log | tr '\n' '|')"; exit 1; }
+          for env in staging production; do
+            docker compose exec -T jenkins curl -fsS "http://incident-api-$env:8000/health"; echo
+          done
+          good=$(docker inspect -f '{{.Config.Image}}' incident-api-production)
+          echo "GOOD_IMAGE=$good" >> "$GITHUB_ENV"
+          echo "Production runs $good"
+
+      - name: Run 2 - broken release is rolled back and never reaches production
+        run: |
+          rm -f build-*.log
+          if ./ci/run-pipeline.sh AUTO_APPROVE=true SIMULATE_BAD_RELEASE=true; then
+            echo "::error title=rollback::the broken release was not stopped"; exit 1
+          fi
+          grep -q "Rolling staging back to $GOOD_IMAGE" build-*.log
+          for env in staging production; do
+            img=$(docker inspect -f '{{.Config.Image}}' "incident-api-$env")
+            [ "$img" = "$GOOD_IMAGE" ] || { echo "::error title=rollback::$env runs $img, expected $GOOD_IMAGE"; exit 1; }
+            docker compose exec -T jenkins curl -fsS "http://incident-api-$env:8000/health"; echo
+          done
+          echo "Staging was rolled back and production never changed: both still run $GOOD_IMAGE"
+
+      - name: Keep the Jenkins build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jenkins-build-logs
+          path: projects/jenkins-pipeline/build-*.log
+          if-no-files-found: ignore
+
+      - name: Jenkins container log on failure
+        if: failure()
+        run: echo "::error title=jenkins log::$(docker compose logs --tail 40 jenkins 2>&1 | tr '\n' '|')"

@@ -16,6 +16,7 @@ on:
       - rail-pulse
       - llm-gateway
       - devops-mcp-server
+      - jenkins-pipeline
     types: [completed]
 
 permissions:

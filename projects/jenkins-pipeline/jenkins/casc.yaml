@@ -1,0 +1,44 @@
+# Jenkins Configuration as Code: everything about this controller is defined here.
+# Changes made in the UI are overwritten on the next restart.
+jenkins:
+  systemMessage: "Configured as code. Edit projects/jenkins-pipeline/jenkins/casc.yaml, not the UI."
+  numExecutors: 2
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+  crumbIssuer:
+    standard:
+      excludeClientIPFromCrumb: true
+
+unclassified:
+  location:
+    url: "http://localhost:8080/"
+
+jobs:
+  - script: |
+      pipelineJob('incident-api') {
+        description('Test, build, scan and deploy incident-api (projects/docker-cicd-pipeline) to staging, then production.')
+        logRotator { numToKeep(20) }
+        parameters {
+          booleanParam('AUTO_APPROVE', false, 'Skip the manual production approval. Used by the automated CI check.')
+          booleanParam('SIMULATE_BAD_RELEASE', false, 'Deploy an image that fails its health check, to prove the rollback.')
+        }
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote { url('file:///repo') }
+                branch('${GIT_BRANCH_SPEC:-*/main}')
+              }
+            }
+            scriptPath('projects/jenkins-pipeline/Jenkinsfile')
+            lightweight(false)
+          }
+        }
+      }
