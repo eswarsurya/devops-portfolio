@@ -2,7 +2,7 @@ name: jenkins-pipeline
 
 on:
   push:
-    branches: [main, "build/jenkins-pipeline"]
+    branches: [main]
     paths:
       - "projects/jenkins-pipeline/**"
       - "projects/docker-cicd-pipeline/**"
