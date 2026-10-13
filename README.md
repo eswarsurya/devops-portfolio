@@ -28,6 +28,10 @@ One reviewable home for my DevOps labs and AI-assisted operations projects. Each
 
 **How they fit together:** the pipeline builds the image (GitHub Actions, or Jenkins with staged deploys and rollback); Terraform or the GitOps platform runs it; Prometheus watches it; the AIOps agent investigates when it breaks; the MCP server lets an assistant check it safely; the LLM gateway controls what all the AI calls cost; and CI Log Doctor explains any red build in this repo.
 
+## Decisions and incidents
+
+Why things are built the way they are, and what broke and what changed: see [docs/](docs/README.md) for five decision records and two incident write-ups.
+
 ## Evidence status
 
 Project validation is reported per project rather than as one combined test total. Test coverage, prerequisites, and commands are documented in each project README; the workflow badges above link to the current GitHub Actions status for each project.
