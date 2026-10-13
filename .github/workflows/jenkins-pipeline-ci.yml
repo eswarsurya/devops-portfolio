@@ -80,7 +80,7 @@ jobs:
       - name: Run 1 - good release goes to staging and production
         run: |
           ./ci/run-pipeline.sh AUTO_APPROVE=true || {
-            echo "::error title=good release::$(tail -40 build-*.log | tr '\n' '|')"; exit 1; }
+            echo "::error title=good release::$(grep -B35 -m1 -E 'script returned exit code|ERROR:' build-*.log | cut -c1-220 | tr '\n' '|')"; exit 1; }
           for env in staging production; do
             docker compose exec -T jenkins curl -fsS "http://incident-api-$env:8000/health"; echo
           done
