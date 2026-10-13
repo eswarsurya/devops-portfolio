@@ -26,7 +26,7 @@ incident-api-7b5c9d6f4-x2m9n    1/1     Terminating        0             2d    1
 
 EVENTS = """LAST SEEN   TYPE      REASON              OBJECT                               MESSAGE
 8m          Normal    ScalingReplicaSet   deployment/incident-api              Scaled up replica set incident-api-6d9f7c8b5d to 2
-7m          Normal    Pulled              pod/incident-api-6d9f7c8b5d-4kq2x    Container image "ghcr.io/eswarsurya/docker-cicd-pipeline:a1b2c3d" already present
+7m          Normal    Pulled              pod/incident-api-6d9f7c8b5d-4kq2x    Container image "ghcr.io/eswarsurya/devops-portfolio/docker-cicd-pipeline:a1b2c3d" already present
 40s         Warning   BackOff             pod/incident-api-6d9f7c8b5d-4kq2x    Back-off restarting failed container app
 35s         Warning   BackOff             pod/incident-api-6d9f7c8b5d-p8w1z    Back-off restarting failed container app"""
 
@@ -45,7 +45,7 @@ Replicas:               2 desired | 2 updated | 2 total | 0 available | 2 unavai
 Pod Template:
   Containers:
    app:
-    Image:      ghcr.io/eswarsurya/docker-cicd-pipeline:a1b2c3d
+    Image:      ghcr.io/eswarsurya/devops-portfolio/docker-cicd-pipeline:a1b2c3d
     Environment:
       APP_ENV:  prod
 Conditions:

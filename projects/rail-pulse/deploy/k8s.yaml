@@ -27,7 +27,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: app
-          image: ghcr.io/eswarsurya/rail-pulse:latest
+          image: ghcr.io/eswarsurya/devops-portfolio/rail-pulse:latest
           ports:
             - { name: http, containerPort: 8000 }
           livenessProbe:

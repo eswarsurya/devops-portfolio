@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 env:
-  IMAGE: ghcr.io/eswarsurya/llm-gateway
+  IMAGE: ghcr.io/eswarsurya/devops-portfolio/llm-gateway
 
 jobs:
   test:

@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 env:
-  IMAGE: ghcr.io/eswarsurya/docker-cicd-pipeline
+  IMAGE: ghcr.io/eswarsurya/devops-portfolio/docker-cicd-pipeline
 
 jobs:
   # 1. Fast feedback: lint + unit tests
@@ -106,7 +106,7 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
             set -e
-            IMG=ghcr.io/eswarsurya/docker-cicd-pipeline:${{ needs.build.outputs.tag }}
+            IMG=ghcr.io/eswarsurya/devops-portfolio/docker-cicd-pipeline:${{ needs.build.outputs.tag }}
             docker pull "$IMG"
             docker rm -f incident-api 2>/dev/null || true
             docker run -d --name incident-api --restart unless-stopped -p 80:8000 "$IMG"

@@ -28,7 +28,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: gateway
-          image: ghcr.io/eswarsurya/llm-gateway:latest
+          image: ghcr.io/eswarsurya/devops-portfolio/llm-gateway:latest
           ports:
             - { name: http, containerPort: 8080 }
           envFrom:

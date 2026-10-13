@@ -1,7 +1,7 @@
 # Copy to terraform.tfvars and edit. terraform.tfvars is git-ignored.
 
 # Option A - the API from docker-cicd-pipeline (GHCR package must be public)
-container_image   = "ghcr.io/eswarsurya/docker-cicd-pipeline:latest"
+container_image   = "ghcr.io/eswarsurya/devops-portfolio/docker-cicd-pipeline:latest"
 container_port    = 8000
 health_check_path = "/health"
 

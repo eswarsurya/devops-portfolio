@@ -6,7 +6,7 @@ variable "region" {
 variable "container_image" {
   type        = string
   description = "Image to run. Defaults to the API built by docker-cicd-pipeline (make the GHCR package public first)."
-  default     = "ghcr.io/eswarsurya/docker-cicd-pipeline:latest"
+  default     = "ghcr.io/eswarsurya/devops-portfolio/docker-cicd-pipeline:latest"
 }
 
 variable "container_port" {

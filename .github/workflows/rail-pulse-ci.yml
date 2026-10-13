@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 env:
-  IMAGE: ghcr.io/eswarsurya/rail-pulse
+  IMAGE: ghcr.io/eswarsurya/devops-portfolio/rail-pulse
 
 jobs:
   test:
