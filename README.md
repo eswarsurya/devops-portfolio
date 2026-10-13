@@ -10,6 +10,7 @@ One reviewable home for my DevOps labs and AI-assisted operations projects. Each
 | Project | What it is | CI |
 |---|---|---|
 | [**AIOps Triage Agent**](projects/aiops-triage-agent) | AI on-call assistant: an Alertmanager alert triggers a Claude agent that investigates Kubernetes with **read-only** tools, streams each step live, and proposes a fix that runs **only after human approval** | ![aiops-triage-agent](https://github.com/eswarsurya/devops-portfolio/actions/workflows/aiops-triage-agent-ci.yml/badge.svg) |
+| [**Grid Signal (GCP)**](projects/gcp-grid-signal) | Live Irish grid carbon intensity on Google Cloud: Cloud Run, Cloud Run Jobs, Scheduler, Firestore, all in Terraform with keyless GitHub deploys, uptime alerts and a budget. Includes a carbon-aware CI gate that holds heavy jobs for a cleaner grid | ![gcp-grid-signal](https://github.com/eswarsurya/devops-portfolio/actions/workflows/gcp-grid-signal-ci.yml/badge.svg) |
 | [**Rail Pulse**](projects/rail-pulse) | Live Irish Rail punctuality monitor run as an SRE service: live map, 85% SLO, Prometheus alerts (unit-tested with promtool), Grafana, live-feed contract test | ![rail-pulse](https://github.com/eswarsurya/devops-portfolio/actions/workflows/rail-pulse-ci.yml/badge.svg) |
 | [**LLM Gateway**](projects/llm-gateway) | Control plane for company Claude API use: team keys, rate limits, monthly budgets, Irish/EU PII redaction, per-team cache, live cost dashboard | ![llm-gateway](https://github.com/eswarsurya/devops-portfolio/actions/workflows/llm-gateway-ci.yml/badge.svg) |
 | [**DevOps MCP Server**](projects/devops-mcp-server) | MCP server giving AI assistants read-only, SSRF-safe checks of sites, TLS, Prometheus, Kubernetes and CI | ![devops-mcp-server](https://github.com/eswarsurya/devops-portfolio/actions/workflows/devops-mcp-server-ci.yml/badge.svg) |
@@ -30,7 +31,7 @@ One reviewable home for my DevOps labs and AI-assisted operations projects. Each
 
 ## Decisions and incidents
 
-Why things are built the way they are, and what broke and what changed: see [docs/](docs/README.md) for five decision records and two incident write-ups.
+Why things are built the way they are, and what broke and what changed: see [docs/](docs/README.md) for six decision records and two incident write-ups.
 
 ## Evidence status
 

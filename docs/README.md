@@ -11,6 +11,7 @@ Short records of why things are built the way they are, and what went wrong and 
 | [0003](decisions/0003-no-nat-gateway-in-the-terraform-lab.md) | No NAT gateway in the Terraform lab |
 | [0004](decisions/0004-health-check-and-rollback-on-every-deploy.md) | Every deploy health-checks and rolls back on its own |
 | [0005](decisions/0005-ai-tools-read-only-with-human-approval.md) | AI tools get read-only access; changes need a person |
+| [0006](decisions/0006-firestore-day-documents-and-cloud-run-jobs.md) | Grid Signal: one Firestore document per day, ingest as a Cloud Run Job |
 
 ## Incident write-ups
 

@@ -2,7 +2,7 @@ name: gcp-grid-signal
 
 on:
   push:
-    branches: [main, "build/gcp-grid-signal"]
+    branches: [main]
     paths: ["projects/gcp-grid-signal/**", ".github/workflows/gcp-grid-signal-ci.yml"]
   pull_request:
     paths: ["projects/gcp-grid-signal/**", ".github/workflows/gcp-grid-signal-ci.yml"]
