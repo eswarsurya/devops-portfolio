@@ -1,0 +1,6 @@
+# Used instead of the app's .dockerignore when building ci/test.Dockerfile,
+# so the tests are included in the test image (but never in the production image).
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
