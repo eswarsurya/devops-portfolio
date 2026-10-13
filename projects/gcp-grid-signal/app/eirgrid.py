@@ -40,7 +40,7 @@ def parse_rows(payload: object) -> dict[str, dict[str, float]]:
             continue
         metric = FIELDS.get(row.get("FieldName"))
         value = row.get("Value")
-        if metric is None or isinstance(value, bool) or not isinstance(value, (int, float)):
+        if metric is None or isinstance(value, bool) or not isinstance(value, int | float):
             continue
         try:
             when = dt.datetime.strptime(row["EffectiveTime"], "%d-%b-%Y %H:%M:%S")
