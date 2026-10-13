@@ -1,0 +1,35 @@
+name: Carbon-aware gate (Irish grid)
+description: >
+  Waits until the Irish grid's carbon intensity is at or below a threshold before letting a job continue,
+  up to a time limit. Use it in front of heavy, non-urgent jobs (nightly builds, load tests, backups).
+inputs:
+  api-url:
+    description: Base URL of a Grid Signal deployment
+    required: true
+  max-intensity:
+    description: Continue once intensity (gCO2/kWh) is at or below this
+    default: "250"
+  max-wait-minutes:
+    description: Give up waiting after this long and continue anyway
+    default: "120"
+  poll-minutes:
+    description: How often to check
+    default: "15"
+outputs:
+  intensity:
+    description: Intensity when the gate opened
+    value: ${{ steps.gate.outputs.intensity }}
+  waited-minutes:
+    description: How long the job waited
+    value: ${{ steps.gate.outputs.waited_minutes }}
+runs:
+  using: composite
+  steps:
+    - id: gate
+      shell: bash
+      run: ${{ github.action_path }}/gate.sh
+      env:
+        API_URL: ${{ inputs.api-url }}
+        MAX_INTENSITY: ${{ inputs.max-intensity }}
+        MAX_WAIT_MINUTES: ${{ inputs.max-wait-minutes }}
+        POLL_MINUTES: ${{ inputs.poll-minutes }}

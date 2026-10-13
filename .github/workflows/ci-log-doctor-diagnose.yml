@@ -17,6 +17,7 @@ on:
       - llm-gateway
       - devops-mcp-server
       - jenkins-pipeline
+      - gcp-grid-signal
     types: [completed]
 
 permissions:

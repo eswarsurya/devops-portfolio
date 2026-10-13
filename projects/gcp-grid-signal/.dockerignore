@@ -1,0 +1,9 @@
+.git
+tests
+infra
+carbon-gate
+docs
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache

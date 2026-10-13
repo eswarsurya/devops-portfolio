@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Grid Signal · Irish electricity, right now</title>
+<style>
+:root{--bg:#f4f6f3;--card:#fff;--ink:#17201b;--muted:#5b6a62;--line:#dfe5e1;--low:#2e7d32;--medium:#b26a00;--high:#c62828;--accent:#1f6f5c}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1412;--card:#161d1a;--ink:#e6ece8;--muted:#98a69e;--line:#26302c;--low:#66bb6a;--medium:#ffb74d;--high:#ef5350;--accent:#5cc3a5}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:880px;margin:auto;padding:28px 16px 48px}h1{margin:0;font-size:1.6rem}.sub{color:var(--muted);margin:2px 0 20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.k{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}.v{font-size:1.6rem;font-weight:700;font-variant-numeric:tabular-nums}
+.pill{display:inline-block;padding:2px 10px;border-radius:99px;color:#fff;font-weight:600;font-size:.85rem}
+.low{background:var(--low)}.medium{background:var(--medium)}.high{background:var(--high)}
+svg{width:100%;height:auto;display:block}.chart{margin-top:12px}.axis{fill:var(--muted);font-size:10px}
+.best{margin-top:12px}.muted{color:var(--muted);font-size:.85rem}code{background:var(--line);padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Grid Signal</h1>
+  <p class="sub">How clean is Ireland's electricity right now, and when is the best time to run heavy work? Live from EirGrid, every 15 minutes.</p>
+  <div class="grid">
+    <div class="card"><div class="k">Carbon intensity now</div><div class="v" id="now">–</div><div id="band"></div></div>
+    <div class="card"><div class="k">Wind share of demand</div><div class="v" id="wind">–</div><div class="muted" id="mw"></div></div>
+    <div class="card"><div class="k">Reading from</div><div class="v" id="age">–</div><div class="muted" id="at"></div></div>
+  </div>
+  <div class="card chart"><div class="k">Last 24 hours (gCO₂/kWh)</div><svg id="chart" viewBox="0 0 800 220" aria-label="Carbon intensity over the last 24 hours"></svg></div>
+  <div class="card best"><div class="k">Best 2-hour window in the next 24 hours</div><div id="best">–</div>
+    <p class="muted">Estimated from the same times over the last 7 days. EirGrid doesn't publish a carbon forecast.</p></div>
+  <p class="muted">API: <code>/api/now</code> · <code>/api/history?hours=24</code> · <code>/api/best-window?duration_minutes=120</code> · <code>/badge.svg</code> · Source: EirGrid Smart Grid Dashboard.</p>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const t = iso => new Date(iso).toLocaleTimeString("en-IE", {hour: "2-digit", minute: "2-digit", timeZone: "Europe/Dublin"});
+async function get(path){ const r = await fetch(path); if(!r.ok) throw new Error(path + " " + r.status); return r.json(); }
+function draw(points){
+  const svg = $("chart"); if(points.length < 2){ svg.innerHTML = '<text x="10" y="110" class="axis">Not enough data yet</text>'; return; }
+  const W=800,H=220,L=36,B=22, vals=points.map(p=>p.intensity_g_per_kwh);
+  const lo=Math.min(...vals,100), hi=Math.max(...vals,350);
+  const x=i=>L+i*(W-L-8)/(points.length-1), y=v=>H-B-(v-lo)*(H-B-10)/(hi-lo);
+  const line=points.map((p,i)=>(i?"L":"M")+x(i).toFixed(1)+" "+y(p.intensity_g_per_kwh).toFixed(1)).join(" ");
+  let g=""; for(const v of [200,300]){ if(v>lo&&v<hi) g+=`<line x1="${L}" x2="${W-8}" y1="${y(v)}" y2="${y(v)}" stroke="currentColor" stroke-opacity=".15"/><text x="2" y="${y(v)+3}" class="axis">${v}</text>`; }
+  const ticks=[0,Math.floor(points.length/2),points.length-1].map(i=>`<text x="${x(i)-14}" y="${H-6}" class="axis">${t(points[i].at)}</text>`).join("");
+  svg.innerHTML=g+ticks+`<path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2.5"/><circle cx="${x(points.length-1)}" cy="${y(vals.at(-1))}" r="4" fill="var(--accent)"/>`;
+}
+(async () => {
+  try {
+    const n = await get("/api/now");
+    $("now").textContent = Math.round(n.intensity_g_per_kwh) + " g";
+    $("band").innerHTML = `<span class="pill ${n.band}">${n.band}</span>`;
+    $("wind").textContent = n.wind_share_pct == null ? "–" : n.wind_share_pct + "%";
+    $("mw").textContent = n.wind_mw == null ? "" : `${Math.round(n.wind_mw)} MW wind / ${Math.round(n.demand_mw)} MW demand`;
+    $("age").textContent = n.age_minutes + " min ago"; $("at").textContent = t(n.at) + " Dublin time";
+  } catch (e) { $("now").textContent = "no data"; }
+  try { draw((await get("/api/history?hours=24")).points); } catch (e) { draw([]); }
+  try {
+    const b = await get("/api/best-window?duration_minutes=120");
+    $("best").innerHTML = `<span class="v">${t(b.start)}–${t(b.end)}</span> <span class="pill ${b.expected_band}">~${Math.round(b.expected_intensity_g_per_kwh)} g</span>` +
+      (b.saving_pct_vs_now != null ? `<div class="muted">${b.saving_pct_vs_now}% lower than now</div>` : "");
+  } catch (e) { $("best").textContent = "Needs a few days of readings first."; }
+})();
+</script>
+</body>
+</html>
