@@ -63,7 +63,8 @@ jobs:
             curl -fs -u "admin:$JENKINS_ADMIN_PASSWORD" localhost:8080/job/incident-api/api/json >/dev/null && exit 0
             sleep 3
           done
-          echo "::error title=Jenkins::job never appeared | $(docker compose logs --tail 30 jenkins 2>&1 | tr '\n' '|')"
+          docker compose logs --no-color jenkins > jenkins.log 2>&1
+          echo "::error title=Jenkins startup::$(grep -nE 'SEVERE|WARNING|ERROR|Caused by|Exception:|ConfiguratorException|Failed' jenkins.log | grep -v '^\s*at ' | head -25 | cut -c1-300 | tr '\n' '|')"
           exit 1
 
       - name: Validate the Jenkinsfile with Jenkins' own linter
