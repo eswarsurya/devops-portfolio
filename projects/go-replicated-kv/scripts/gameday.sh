@@ -71,6 +71,10 @@ mark "fault 2: kv2 killed" "only kv1 left; it cannot reach 2 replicas"
 code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$(client_port kv1)/kv/gameday-marker")
 [ "$code" = 503 ] || fail "quorum lost" "GET via kv1 without quorum returned $code, want 503"
 mark "kv1 refuses without quorum" "GET returned 503, not a possibly stale value"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT --data-binary "rejected-write" \
+  "http://127.0.0.1:$(client_port kv1)/kv/gameday-unknown")
+[ "$code" = 503 ] || fail "quorum lost" "PUT via kv1 without quorum returned $code, want 503"
+mark "write rejected with 503" "PUT gameday-unknown via kv1; kv1 keeps its own copy (outcome unknown, not failed)"
 wait_alert KVErrorBudgetBurnFast firing "$DETECT_TIMEOUT" ||
   fail "detection" "KVErrorBudgetBurnFast did not fire within ${DETECT_TIMEOUT}s of losing quorum"
 detect=$((SECONDS - fault_at))
@@ -92,6 +96,15 @@ done
 mark "kv3 caught up" "its local copy now has gameday-marker (anti-entropy after restart)"
 body=$(curl -s "http://127.0.0.1:$(client_port kv3)/kv/gameday-marker")
 [ "$body" = "written-while-kv3-down" ] || fail "read after recovery" "kv3 returned '$body'"
+# Nothing has read this key, so only anti-entropy can have copied it.
+code=000
+for _ in $(seq 1 30); do
+  code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$(peer_port kv2)/internal/kv/gameday-unknown" || true)
+  [ "$code" = 200 ] && break
+  sleep 1
+done
+[ "$code" = 200 ] || fail "rejected write" "expected the write that got 503 to spread from kv1 to kv2 after recovery"
+mark "rejected write is now on kv2" "the PUT that got 503 spread from kv1 by anti-entropy: a 503 on write means unknown"
 
 # 5. Wait for the page to clear on its own.
 wait_alert KVErrorBudgetBurnFast inactive "$RESOLVE_TIMEOUT" ||

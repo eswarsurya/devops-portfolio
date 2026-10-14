@@ -200,6 +200,17 @@ jobs:
           docker compose up -d
       - name: Run the game day
         run: scripts/gameday.sh
+      - name: SIGTERM shuts a node down cleanly
+        run: |
+          docker compose stop -t 15 kv1
+          if ! docker compose logs --no-color kv1 | grep -q '"msg":"kvnode stopped cleanly"'; then
+            last=$(docker compose logs --no-color --tail 5 kv1 | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')
+            echo "::error title=graceful shutdown::kv1 did not log a clean stop. Last lines:%0A$last"
+            exit 1
+          fi
+          exit_code=$(docker inspect kv-kv1-1 --format '{{.State.ExitCode}}')
+          echo "kv1 exit code: $exit_code"
+          [ "$exit_code" = 0 ] || { echo "::error title=graceful shutdown::kv1 exited with $exit_code"; exit 1; }
       - name: Alerts and logs on failure
         if: failure()
         run: |
