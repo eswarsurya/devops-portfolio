@@ -17,8 +17,6 @@ x-mysql: &mysql
 
 x-web: &web
   build: ./apache
-  volumes:
-    - wp-content:/var/www/html/wp-content
   networks: [lab]
   depends_on:
     db1: { condition: service_healthy }
@@ -230,7 +228,6 @@ volumes:
   db1:
   db2:
   db3:
-  wp-content:
   letsencrypt:
   nginx-logs:
   es-data:

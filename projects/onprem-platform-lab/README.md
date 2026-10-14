@@ -106,6 +106,7 @@ Clean up: `docker compose down -v`.
 - **Elasticsearch and Kibana run without security** to keep the lab small. Production needs TLS and authentication.
 - **LDAP without TLS, and Apache's LDAP cache turned off** so access changes show immediately. Production uses LDAPS
   and a short cache.
+- **Each web node keeps its own WordPress files.** Uploads would need shared storage (NFS) or object storage in a real setup.
 - **One machine.** The "servers" are containers, so this proves configuration and behaviour, not hardware or real
   network failures.
 - **No automatic database failover.** Promoting db2 is a manual, deliberate step; automating it safely needs a
