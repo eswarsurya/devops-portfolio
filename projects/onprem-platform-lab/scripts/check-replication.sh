@@ -11,8 +11,7 @@ MAX_LAG=${MAX_LAG_SECONDS:-30}
 status=0
 
 for host in $HOSTS; do
-  out=$(MYSQL_PWD="$MYSQL_MONITOR_PASSWORD" mysql -h "$host" -umonitor --connect-timeout=5 -e "SHOW REPLICA STATUS\G" 2>&1)
-  if [ $? -ne 0 ]; then
+  if ! out=$(MYSQL_PWD="$MYSQL_MONITOR_PASSWORD" mysql -h "$host" -umonitor --connect-timeout=5 -e "SHOW REPLICA STATUS\G" 2>&1); then
     io="unreachable"; sqlt="unreachable"; lag="null"; err=$(echo "$out" | tail -1)
   else
     field() { echo "$out" | sed -n "s/^ *$1: //p" | head -1; }

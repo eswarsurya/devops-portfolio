@@ -1,0 +1,2 @@
+# .env is generated at run time; helper functions are called through check()/retry()
+disable=SC1091,SC2329
