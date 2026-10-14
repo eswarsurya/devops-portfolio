@@ -1,7 +1,7 @@
 # DevOps & Cloud Engineering Portfolio
 
 **Eswar Surya Danaboina** · Dublin, Ireland  
-**Focus:** DevOps Engineering · AWS Cloud · Infrastructure as Code · CI/CD · Linux Automation · Platform Engineering · AI-assisted operations
+**Focus:** Site Reliability Engineering · Kubernetes · Linux & networking · Go · Distributed systems · Hybrid cloud (AWS, Azure, GCP, on-prem) · Infrastructure as Code · CI/CD · AI-assisted operations
 
 One reviewable home for my DevOps labs and AI-assisted operations projects. Each project lives in `projects/<name>/` with its own README (architecture, setup, tests, cleanup) and its own CI workflow in `.github/workflows/<name>-ci.yml`, which only runs when that project changes.
 
@@ -9,6 +9,9 @@ One reviewable home for my DevOps labs and AI-assisted operations projects. Each
 
 | Project | What it is | CI |
 |---|---|---|
+| [**Go Replicated KV**](projects/go-replicated-kv) | Distributed key-value store in Go (standard library only): 3 replicas, quorum reads and writes, read repair, write-ahead log and catch-up after restart. SLO with burn-rate alerts tested in promtool, k6 load test and capacity plan, and a game day in CI that kills nodes, checks the page fires and clears, with a postmortem | ![go-replicated-kv](https://github.com/eswarsurya/devops-portfolio/actions/workflows/go-replicated-kv-ci.yml/badge.svg) |
+| [**Linux Troubleshooting Lab**](projects/linux-troubleshooting-lab) | 13 real faults on Linux, each broken, diagnosed with real tools and fixed in CI: runaway threads, OOM kills in a cgroup, zombies, fd exhaustion, deleted-but-open files, inodes, a process blocked in a syscall (strace), DNS, bind address, firewall DROP vs REJECT, packet loss with tc netem and tshark, expired TLS, 502 from a dead upstream | ![linux-troubleshooting-lab](https://github.com/eswarsurya/devops-portfolio/actions/workflows/linux-troubleshooting-lab-ci.yml/badge.svg) |
+| [**Hybrid Cloud & K8s Admin**](projects/hybrid-cloud-k8s-admin) | AWS Transit Gateway, VPC peering, Site-to-Site VPN and cost controls in Terraform; AKS and Azure DevOps pipelines; GitLab CI; CKA-style drills on a 3-node cluster (RBAC, CSR users, drain, NetworkPolicy, etcd backup and restore); OpenSearch cluster administration | ![hybrid-cloud-k8s-admin](https://github.com/eswarsurya/devops-portfolio/actions/workflows/hybrid-cloud-k8s-admin-ci.yml/badge.svg) |
 | [**AIOps Triage Agent**](projects/aiops-triage-agent) | AI on-call assistant: an Alertmanager alert triggers a Claude agent that investigates Kubernetes with **read-only** tools, streams each step live, and proposes a fix that runs **only after human approval** | ![aiops-triage-agent](https://github.com/eswarsurya/devops-portfolio/actions/workflows/aiops-triage-agent-ci.yml/badge.svg) |
 | [**Grid Signal (GCP)**](projects/gcp-grid-signal) | Live Irish grid carbon intensity on Google Cloud: Cloud Run, Cloud Run Jobs, Scheduler, Firestore, all in Terraform with keyless GitHub deploys, uptime alerts and a budget. Includes a carbon-aware CI gate that holds heavy jobs for a cleaner grid | ![gcp-grid-signal](https://github.com/eswarsurya/devops-portfolio/actions/workflows/gcp-grid-signal-ci.yml/badge.svg) |
 | [**Rail Pulse**](projects/rail-pulse) | Live Irish Rail punctuality monitor run as an SRE service: live map, 85% SLO, Prometheus alerts (unit-tested with promtool), Grafana, live-feed contract test | ![rail-pulse](https://github.com/eswarsurya/devops-portfolio/actions/workflows/rail-pulse-ci.yml/badge.svg) |
