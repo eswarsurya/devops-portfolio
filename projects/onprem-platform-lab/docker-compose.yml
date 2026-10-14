@@ -89,10 +89,17 @@ services:
     networks: [lab]
   certbot:
     image: certbot/certbot:v2.11.0
-    command: >
-      certonly --standalone --non-interactive --agree-tos -m ops@dublin-dc.lab
-      --server https://pebble:14000/dir --no-verify-ssl --http-01-port 5002
-      -d portal.dublin-dc.lab --keep-until-expiring
+    # retry: Pebble may still be starting when certbot runs
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        for attempt in 1 2 3 4 5 6 7 8 9 10; do
+          certbot certonly --standalone --non-interactive --agree-tos -m ops@dublin-dc.lab \
+            --server https://pebble:14000/dir --no-verify-ssl --http-01-port 5002 \
+            -d portal.dublin-dc.lab --keep-until-expiring && exit 0
+          echo "attempt $$attempt failed, retrying"; sleep 3
+        done
+        exit 1
     volumes:
       - letsencrypt:/etc/letsencrypt
     networks:
