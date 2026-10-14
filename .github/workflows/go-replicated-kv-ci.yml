@@ -1,0 +1,215 @@
+name: go-replicated-kv
+
+on:
+  push:
+    branches: [main, "build/go-replicated-kv"]
+    paths: ["projects/go-replicated-kv/**", ".github/workflows/go-replicated-kv-ci.yml"]
+  pull_request:
+    paths: ["projects/go-replicated-kv/**", ".github/workflows/go-replicated-kv-ci.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: go-replicated-kv-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: go-replicated-kv:local
+  K6_IMAGE: grafana/k6:0.54.0
+  PROM_IMAGE: prom/prometheus:v2.55.1
+
+jobs:
+  test:
+    name: Go tests, race detector, benchmarks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/go-replicated-kv
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: false
+      - name: No third-party modules
+        run: |
+          if grep -q '^require' go.mod; then
+            echo "::error title=go.mod::this project uses the standard library only; go.mod must have no require block"
+            exit 1
+          fi
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error title=gofmt::files need gofmt: $(echo "$unformatted" | tr '\n' ' ')"
+            exit 1
+          fi
+      - name: go vet
+        run: go vet ./...
+      - name: Unit and integration tests with the race detector
+        run: |
+          set -o pipefail
+          go test -race -count=1 -coverprofile=coverage.out ./... 2>&1 | tee test.log
+      - name: Report test failures as annotations
+        if: failure()
+        run: |
+          grep -E -- '--- FAIL|^\s+\S+_test.go:[0-9]+:|panic:|DATA RACE' test.log | head -40 |
+            sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g' | sed 's/^/::error title=go test failures::/' || true
+      - name: Coverage and test summary
+        run: |
+          {
+            echo "### Go tests (race detector on)"
+            echo
+            echo '```'
+            grep -E '^(ok|FAIL|---)' test.log
+            echo '```'
+            echo
+            echo "Total statement coverage: $(go tool cover -func=coverage.out | awk '/^total:/ {print $3}')"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Benchmarks
+        run: |
+          set -o pipefail
+          go test -run '^$' -bench . -benchmem -benchtime=2s ./... 2>&1 | tee bench.log
+          {
+            echo "### Benchmarks (GitHub-hosted runner, numbers vary run to run)"
+            echo
+            echo '```'
+            grep -E '^(Benchmark|goos|goarch|cpu)' bench.log | sort -u
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: ShellCheck
+        run: shellcheck -x scripts/*.sh
+
+  slo-rules:
+    name: SLO rules (promtool)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/go-replicated-kv
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check rule syntax
+        run: docker run --rm -v "$PWD/slo:/slo" -w /slo --entrypoint promtool "$PROM_IMAGE" check rules rules.yml
+      - name: Unit-test burn-rate alerts
+        run: |
+          set -o pipefail
+          if ! docker run --rm -v "$PWD/slo:/slo" -w /slo --entrypoint promtool "$PROM_IMAGE" test rules rules_test.yml 2>&1 | tee promtool.log; then
+            msg=$(head -c 3000 promtool.log | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')
+            echo "::error title=promtool test rules::$msg"
+            exit 1
+          fi
+      - name: Check Prometheus config
+        run: |
+          docker run --rm -v "$PWD/deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro" -v "$PWD/slo:/etc/prometheus/slo:ro" \
+            --entrypoint promtool "$PROM_IMAGE" check config /etc/prometheus/prometheus.yml
+
+  load-test:
+    name: Load test and capacity (k6, pprof)
+    needs: test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/go-replicated-kv
+    env:
+      OUT_DIR: ${{ github.workspace }}/projects/go-replicated-kv/loadtest-results
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: false
+      - name: Build image
+        run: docker build -t "$IMAGE" .
+      - name: Image runs as non-root
+        run: |
+          user=$(docker image inspect "$IMAGE" --format '{{.Config.User}}')
+          echo "image user: $user"
+          if [ -z "$user" ] || [ "$user" = "0" ] || [ "$user" = "root" ]; then
+            echo "::error title=image::image runs as root"
+            exit 1
+          fi
+      - name: Start the 3-node cluster
+        run: |
+          docker compose config -q
+          docker compose up -d kv1 kv2 kv3
+          . scripts/lib.sh
+          wait_ready kv1 kv2 kv3
+          docker compose ps
+      - name: "Steady load: SLO thresholds must hold (200 req/s, 60s)"
+        env:
+          STEADY_RATE: "200"
+          STEADY_SECONDS: "60"
+        run: scripts/loadtest.sh cluster-steady steady
+      - name: "Step load on 3 nodes, with a CPU profile of kv1"
+        env:
+          STEPS: "250,500,1000,2000,4000"
+          STEP_SECONDS: "20"
+        run: |
+          (sleep 45 && scripts/profile.sh kv1 30 "$OUT_DIR/kv1-cpu.pb.gz") &
+          prof=$!
+          scripts/loadtest.sh cluster-step step
+          wait "$prof"
+      - name: "Step load on a single node (W=1, R=1, no replication)"
+        env:
+          STEPS: "250,500,1000,2000,4000"
+          STEP_SECONDS: "20"
+          TARGETS: http://kv-solo:8080
+        run: |
+          docker run -d --name kv-solo --network kv_default -e KV_NODE_ID=solo -e KV_W=1 -e KV_R=1 \
+            -e KV_SYNC=true -p 127.0.0.1:8089:8080 "$IMAGE"
+          . scripts/lib.sh
+          wait_http http://127.0.0.1:8089/readyz 200 30 || fail "kv-solo" "single node did not start"
+          scripts/loadtest.sh single-node-step step
+      - name: Node logs on failure
+        if: failure()
+        run: |
+          for n in kv1 kv2 kv3; do
+            echo "::group::$n"; docker compose logs --tail 100 "$n"; echo "::endgroup::"
+          done
+          errs=$(docker compose logs --no-color 2>&1 | grep -E '"level":"(ERROR|WARN)"' | tail -8 | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')
+          [ -n "$errs" ] && echo "::error title=node log errors::$errs" || true
+      - name: Keep results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: loadtest-results
+          path: projects/go-replicated-kv/loadtest-results/
+          if-no-files-found: ignore
+      - name: Stop
+        if: always()
+        run: |
+          docker rm -f kv-solo || true
+          docker compose down -v
+
+  game-day:
+    name: Game day (fault injection, alert, recovery)
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: projects/go-replicated-kv
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image and start cluster with Prometheus
+        run: |
+          docker build -t "$IMAGE" .
+          docker compose up -d
+      - name: Run the game day
+        run: scripts/gameday.sh
+      - name: Alerts and logs on failure
+        if: failure()
+        run: |
+          curl -s http://127.0.0.1:9090/api/v1/alerts | jq -c '[.data.alerts[] | {alert: .labels.alertname, state: .state}]' || true
+          docker compose ps -a
+          for n in kv1 kv2 kv3 prometheus; do
+            echo "::group::$n"; docker compose logs --tail 80 "$n"; echo "::endgroup::"
+          done
+          alerts=$(curl -s http://127.0.0.1:9090/api/v1/alerts | jq -c '[.data.alerts[] | {a: .labels.alertname, s: .state}]' || echo unavailable)
+          echo "::error title=alerts at failure::$alerts"
+      - name: Stop
+        if: always()
+        run: docker compose down -v

@@ -1,0 +1,67 @@
+# Three kvnode replicas plus Prometheus with the SLO rules.
+#
+#   docker build -t go-replicated-kv:local .
+#   docker compose up -d
+#
+# Client API:  localhost:8081, 8082, 8083
+# Peer API:    localhost:7071, 7072, 7073 (published for debugging only)
+# pprof:       localhost:6061, 6062, 6063
+# Prometheus:  localhost:9090
+name: kv
+
+x-kvnode: &kvnode
+  image: go-replicated-kv:local
+  build: .
+  restart: "no" # the game day kills nodes on purpose; keep them down
+  stop_grace_period: 15s
+
+x-kvenv: &kvenv
+  KV_W: "2"
+  KV_R: "2"
+  KV_SYNC: "true"
+  KV_PEER_TIMEOUT: 500ms
+  KV_PROBE_INTERVAL: 1s
+  KV_ANTI_ENTROPY_INTERVAL: 5s
+
+services:
+  kv1:
+    <<: *kvnode
+    environment:
+      <<: *kvenv
+      KV_NODE_ID: kv1
+      KV_PEERS: kv2=http://kv2:7070,kv3=http://kv3:7070
+    ports: ["127.0.0.1:8081:8080", "127.0.0.1:7071:7070", "127.0.0.1:6061:6060"]
+    volumes: ["kv1-data:/data"]
+
+  kv2:
+    <<: *kvnode
+    environment:
+      <<: *kvenv
+      KV_NODE_ID: kv2
+      KV_PEERS: kv1=http://kv1:7070,kv3=http://kv3:7070
+    ports: ["127.0.0.1:8082:8080", "127.0.0.1:7072:7070", "127.0.0.1:6062:6060"]
+    volumes: ["kv2-data:/data"]
+
+  kv3:
+    <<: *kvnode
+    environment:
+      <<: *kvenv
+      KV_NODE_ID: kv3
+      KV_PEERS: kv1=http://kv1:7070,kv2=http://kv2:7070
+    ports: ["127.0.0.1:8083:8080", "127.0.0.1:7073:7070", "127.0.0.1:6063:6060"]
+    volumes: ["kv3-data:/data"]
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=2d
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./slo:/etc/prometheus/slo:ro
+    ports: ["127.0.0.1:9090:9090"]
+
+volumes:
+  kv1-data:
+  kv2-data:
+  kv3-data:
