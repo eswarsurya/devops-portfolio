@@ -98,7 +98,7 @@ check "replication check job succeeds while replication is healthy" ./scripts/ru
 sql db3 "STOP REPLICA SQL_THREAD"
 echo "      (stopped the SQL thread on db3 to simulate broken replication)"
 check "replication check job fails when db3 stops applying changes" not env EXPECT_FAILURE=1 ./scripts/rundeck.sh run "Replication health check"
-alerts() { docker compose exec -T alert-receiver wget -qO- http://localhost:9000/alerts; }
+alerts() { docker compose exec -T alert-receiver wget -qO- http://127.0.0.1:9000/alerts; }
 fired() { alerts | grep -q '"type": "alert".*replication-health'; }
 check "an alert was sent to the alert receiver" retry 20 fired
 if ! fired; then
