@@ -1,0 +1,180 @@
+# Unit tests for slo/rules.yml:
+#   promtool test rules rules_test.yml
+# Series use a 1-minute interval. "a+bxN" is N+1 samples starting at a,
+# rising by b each minute. Traffic is 600 requests a minute (10 req/s).
+
+rule_files:
+  - rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Healthy service: no budget is burned, nothing fires.
+  - interval: 1m
+    input_series:
+      - series: 'kv_http_requests_total{route="kv",method="GET",code="200",job="kvnode",instance="kv1:8080"}'
+        values: '0+600x120'
+      - series: 'kv_http_requests_total{route="kv",method="GET",code="503",job="kvnode",instance="kv1:8080"}'
+        values: '0x120'
+    promql_expr_test:
+      - expr: slo:kv_errors:ratio_rate1h
+        eval_time: 90m
+        exp_samples:
+          - labels: 'slo:kv_errors:ratio_rate1h'
+            value: 0
+    alert_rule_test:
+      - eval_time: 2h
+        alertname: KVErrorBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 2h
+        alertname: KVErrorBudgetBurnMedium
+        exp_alerts: []
+      - eval_time: 2h
+        alertname: KVErrorBudgetBurnSlow
+        exp_alerts: []
+
+  # Total outage from minute 30 (every request is a 503, as when quorum is
+  # lost). Both paging alerts fire within minutes; the slow ticket alert
+  # is still waiting out its 30m "for" and must not fire yet.
+  - interval: 1m
+    input_series:
+      - series: 'kv_http_requests_total{route="kv",method="GET",code="200",job="kvnode",instance="kv1:8080"}'
+        values: '0+600x30 18000x30'
+      - series: 'kv_http_requests_total{route="kv",method="GET",code="503",job="kvnode",instance="kv1:8080"}'
+        values: '0x30 600+600x30'
+    promql_expr_test:
+      - expr: slo:kv_errors:ratio_rate5m
+        eval_time: 40m
+        exp_samples:
+          - labels: 'slo:kv_errors:ratio_rate5m'
+            value: 1
+    alert_rule_test:
+      - eval_time: 29m
+        alertname: KVErrorBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: KVErrorBudgetBurnFast
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              slo: availability
+            exp_annotations:
+              summary: kv is burning its availability error budget 14x too fast
+              runbook: docs/incidents/runbook.md
+      - eval_time: 40m
+        alertname: KVErrorBudgetBurnMedium
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              slo: availability
+            exp_annotations:
+              summary: kv is burning its availability error budget 6x too fast
+              runbook: docs/incidents/runbook.md
+      - eval_time: 40m
+        alertname: KVErrorBudgetBurnSlow
+        exp_alerts: []
+
+  # 1% errors for hours: 10x the budget rate. Too slow for the fast page
+  # (needs 1.44%), fast enough for the 6x page.
+  - interval: 1m
+    input_series:
+      - series: 'kv_http_requests_total{route="kv",method="PUT",code="200",job="kvnode",instance="kv2:8080"}'
+        values: '0+594x180'
+      - series: 'kv_http_requests_total{route="kv",method="PUT",code="503",job="kvnode",instance="kv2:8080"}'
+        values: '0+6x180'
+    alert_rule_test:
+      - eval_time: 2h
+        alertname: KVErrorBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 2h
+        alertname: KVErrorBudgetBurnMedium
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              slo: availability
+            exp_annotations:
+              summary: kv is burning its availability error budget 6x too fast
+              runbook: docs/incidents/runbook.md
+
+  # 0.2% errors for two days: twice the budget rate. Nobody should be woken
+  # up for this, but a ticket must be raised before the month's budget is gone.
+  - interval: 1m
+    input_series:
+      - series: 'kv_http_requests_total{route="kv",method="GET",code="200",job="kvnode",instance="kv3:8080"}'
+        values: '0+998x2900'
+      - series: 'kv_http_requests_total{route="kv",method="GET",code="500",job="kvnode",instance="kv3:8080"}'
+        values: '0+2x2900'
+    alert_rule_test:
+      - eval_time: 2d
+        alertname: KVErrorBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 2d
+        alertname: KVErrorBudgetBurnMedium
+        exp_alerts: []
+      - eval_time: 2d
+        alertname: KVErrorBudgetBurnSlow
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              slo: availability
+            exp_annotations:
+              summary: kv will spend its whole availability budget if this error rate continues
+              runbook: docs/incidents/runbook.md
+
+  # 20% of requests slower than 100 ms: the latency budget (1%) burns 20x.
+  - interval: 1m
+    input_series:
+      - series: 'kv_http_request_duration_seconds_bucket{route="kv",method="GET",le="0.1",job="kvnode",instance="kv1:8080"}'
+        values: '0+480x60'
+      - series: 'kv_http_request_duration_seconds_count{route="kv",method="GET",job="kvnode",instance="kv1:8080"}'
+        values: '0+600x60'
+    promql_expr_test:
+      - expr: round(slo:kv_slow:ratio_rate5m, 0.001)
+        eval_time: 30m
+        exp_samples:
+          - labels: '{}'
+            value: 0.2
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: KVLatencyBudgetBurnFast
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              slo: latency
+            exp_annotations:
+              summary: kv is burning its latency error budget 14x too fast
+              runbook: docs/incidents/runbook.md
+
+  # Cause alerts carry the instance so the responder knows where to look.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="kvnode",instance="kv3:8080"}'
+        values: '1x5 0x10'
+      - series: 'up{job="kvnode",instance="kv1:8080"}'
+        values: '1x15'
+      - series: 'kv_ready{job="kvnode",instance="kv1:8080"}'
+        values: '1x5 0x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: KVNodeDown
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: KVNodeDown
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              job: kvnode
+              instance: kv3:8080
+            exp_annotations:
+              summary: a kv node is not being scraped
+              runbook: docs/incidents/runbook.md
+      - eval_time: 10m
+        alertname: KVQuorumLost
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              job: kvnode
+              instance: kv1:8080
+            exp_annotations:
+              summary: a kv node cannot reach enough replicas for a quorum
+              runbook: docs/incidents/runbook.md

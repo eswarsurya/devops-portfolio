@@ -1,0 +1,111 @@
+# SLIs, SLO burn-rate alerts and two cause alerts for the kv service.
+# See slo/README.md for the SLO definition and the reasoning.
+#
+# Availability SLO: 99.9% of client requests (route="kv") do not return 5xx.
+#   error budget = 0.1%
+# Latency SLO:      99% of client requests complete in under 100 ms.
+#   error budget = 1%
+#
+# Burn-rate alerts follow the multiwindow, multi-burn-rate pattern from the
+# Google SRE Workbook (chapter 5). For a 28-day window:
+#   14.4x over 1h (and 5m)  = 2% of the budget in 1 hour   -> page
+#    6x   over 6h (and 30m) = 5% of the budget in 6 hours  -> page
+#    1x   over 3d (and 6h)  = 10% of the budget in 3 days  -> ticket
+# The short window makes the alert stop soon after the problem stops.
+
+groups:
+  - name: kv-sli
+    rules:
+      - record: slo:kv_errors:ratio_rate5m
+        expr: sum(rate(kv_http_requests_total{route="kv",code=~"5.."}[5m])) / sum(rate(kv_http_requests_total{route="kv"}[5m]))
+      - record: slo:kv_errors:ratio_rate30m
+        expr: sum(rate(kv_http_requests_total{route="kv",code=~"5.."}[30m])) / sum(rate(kv_http_requests_total{route="kv"}[30m]))
+      - record: slo:kv_errors:ratio_rate1h
+        expr: sum(rate(kv_http_requests_total{route="kv",code=~"5.."}[1h])) / sum(rate(kv_http_requests_total{route="kv"}[1h]))
+      - record: slo:kv_errors:ratio_rate6h
+        expr: sum(rate(kv_http_requests_total{route="kv",code=~"5.."}[6h])) / sum(rate(kv_http_requests_total{route="kv"}[6h]))
+      - record: slo:kv_errors:ratio_rate3d
+        expr: sum(rate(kv_http_requests_total{route="kv",code=~"5.."}[3d])) / sum(rate(kv_http_requests_total{route="kv"}[3d]))
+
+      - record: slo:kv_slow:ratio_rate5m
+        expr: 1 - sum(rate(kv_http_request_duration_seconds_bucket{route="kv",le="0.1"}[5m])) / sum(rate(kv_http_request_duration_seconds_count{route="kv"}[5m]))
+      - record: slo:kv_slow:ratio_rate1h
+        expr: 1 - sum(rate(kv_http_request_duration_seconds_bucket{route="kv",le="0.1"}[1h])) / sum(rate(kv_http_request_duration_seconds_count{route="kv"}[1h]))
+      - record: slo:kv_slow:ratio_rate6h
+        expr: 1 - sum(rate(kv_http_request_duration_seconds_bucket{route="kv",le="0.1"}[6h])) / sum(rate(kv_http_request_duration_seconds_count{route="kv"}[6h]))
+      - record: slo:kv_slow:ratio_rate3d
+        expr: 1 - sum(rate(kv_http_request_duration_seconds_bucket{route="kv",le="0.1"}[3d])) / sum(rate(kv_http_request_duration_seconds_count{route="kv"}[3d]))
+
+  - name: kv-slo-alerts
+    rules:
+      - alert: KVErrorBudgetBurnFast
+        expr: slo:kv_errors:ratio_rate1h > (14.4 * 0.001) and slo:kv_errors:ratio_rate5m > (14.4 * 0.001)
+        for: 1m
+        labels:
+          severity: page
+          slo: availability
+        annotations:
+          summary: kv is burning its availability error budget 14x too fast
+          runbook: docs/incidents/runbook.md
+
+      - alert: KVErrorBudgetBurnMedium
+        expr: slo:kv_errors:ratio_rate6h > (6 * 0.001) and slo:kv_errors:ratio_rate30m > (6 * 0.001)
+        for: 2m
+        labels:
+          severity: page
+          slo: availability
+        annotations:
+          summary: kv is burning its availability error budget 6x too fast
+          runbook: docs/incidents/runbook.md
+
+      - alert: KVErrorBudgetBurnSlow
+        expr: slo:kv_errors:ratio_rate3d > 0.001 and slo:kv_errors:ratio_rate6h > 0.001
+        for: 30m
+        labels:
+          severity: ticket
+          slo: availability
+        annotations:
+          summary: kv will spend its whole availability budget if this error rate continues
+          runbook: docs/incidents/runbook.md
+
+      - alert: KVLatencyBudgetBurnFast
+        expr: slo:kv_slow:ratio_rate1h > (14.4 * 0.01) and slo:kv_slow:ratio_rate5m > (14.4 * 0.01)
+        for: 1m
+        labels:
+          severity: page
+          slo: latency
+        annotations:
+          summary: kv is burning its latency error budget 14x too fast
+          runbook: docs/incidents/runbook.md
+
+      - alert: KVLatencyBudgetBurnSlow
+        expr: slo:kv_slow:ratio_rate3d > 0.01 and slo:kv_slow:ratio_rate6h > 0.01
+        for: 30m
+        labels:
+          severity: ticket
+          slo: latency
+        annotations:
+          summary: kv will spend its whole latency budget if this continues
+          runbook: docs/incidents/runbook.md
+
+  # Cause alerts. They help the person on call find the problem, but they
+  # do not page: one node down is absorbed by the quorum and costs no budget.
+  - name: kv-cause-alerts
+    rules:
+      - alert: KVNodeDown
+        expr: up{job="kvnode"} == 0
+        for: 30s
+        labels:
+          severity: ticket
+        annotations:
+          summary: a kv node is not being scraped
+          runbook: docs/incidents/runbook.md
+
+      - alert: KVQuorumLost
+        expr: kv_ready == 0
+        for: 30s
+        labels:
+          severity: ticket
+        annotations:
+          summary: a kv node cannot reach enough replicas for a quorum
+          runbook: docs/incidents/runbook.md

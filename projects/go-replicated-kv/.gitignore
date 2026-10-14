@@ -1,0 +1,7 @@
+/data/
+/loadtest-results/
+coverage.out
+test.log
+bench.log
+*.pb.gz
+/kvnode
