@@ -75,10 +75,22 @@ jobs:
           fi
 
       - name: Wait for the databases, then wire up replication
-        run: ./scripts/setup-replication.sh
+        run: |
+          if ! ./scripts/setup-replication.sh > step.log 2>&1; then
+            cat step.log
+            echo "::error title=Wait for the databases, then wire up replication failed::$(tail -15 step.log | cut -c1-250 | sed ':a;N;$!ba;s/\n/%0A/g')"
+            exit 1
+          fi
+          cat step.log
 
       - name: Import the Rundeck runbooks
-        run: ./scripts/rundeck.sh import
+        run: |
+          if ! ./scripts/rundeck.sh import > step.log 2>&1; then
+            cat step.log
+            echo "::error title=Import the Rundeck runbooks failed::$(tail -15 step.log | cut -c1-250 | sed ':a;N;$!ba;s/\n/%0A/g')"
+            exit 1
+          fi
+          cat step.log
 
       - name: End-to-end checks
         run: ./tests/run-checks.sh
