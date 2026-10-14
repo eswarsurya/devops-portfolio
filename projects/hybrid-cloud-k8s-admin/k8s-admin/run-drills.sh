@@ -83,7 +83,8 @@ kubectl apply -f manifests/maintenance.yaml >/dev/null
 kubectl rollout status deploy/web --timeout=180s >/dev/null
 kubectl drain "$W1" --ignore-daemonsets --delete-emptydir-data --timeout=180s >/dev/null 2>&1
 check "drained node is unschedulable" test "$(kubectl get node "$W1" -o jsonpath='{.spec.unschedulable}')" = "true"
-check "no web pods left on the drained node" not grep -q "$W1" <<<"$(nodes_of web)"
+off_w1() { ! kubectl get pods -l app=web --field-selector=status.phase!=Succeeded -o jsonpath='{.items[*].spec.nodeName}' | grep -q "$W1"; }
+check "no web pods left on the drained node" retry 20 off_w1
 web_ready() { [ "$(kubectl get deploy web -o jsonpath='{.status.readyReplicas}')" = "3" ]; }
 check "all 3 web pods are running elsewhere" retry 30 web_ready
 kubectl uncordon "$W1" >/dev/null
@@ -129,9 +130,18 @@ echo "      $(kubectl -n kube-system exec "$ETCD_POD" -- etcdutl snapshot status
 kubectl delete configmap backup-marker >/dev/null
 check "marker deleted after the snapshot (simulated accident)" not kubectl get configmap backup-marker
 PEER=$(docker exec "$CP" sed -n 's/.*--initial-advertise-peer-urls=//p' /etc/kubernetes/manifests/etcd.yaml)
-kubectl -n kube-system exec "$ETCD_POD" -- etcdutl snapshot restore /var/lib/etcd/backup.db --data-dir /var/lib/etcd/restored \
-  --name "$CP" --initial-cluster "$CP=$PEER" --initial-advertise-peer-urls "$PEER" >/dev/null 2>&1
-check "snapshot restored into a new data directory" docker exec "$CP" test -d /var/lib/etcd/restored/member
+echo "      peer URL: $PEER"
+if ! out=$(kubectl -n kube-system exec "$ETCD_POD" -- etcdutl snapshot restore /var/lib/etcd/backup.db \
+    --data-dir /var/lib/etcd/restored --name "$CP" --initial-cluster "$CP=$PEER" \
+    --initial-advertise-peer-urls "$PEER" 2>&1); then
+  echo "::error title=etcdutl restore::$(echo "$out" | tail -8 | cut -c1-250 | sed ':a;N;$!ba;s/\n/%0A/g')"
+fi
+restored_ok() { docker exec "$CP" test -d /var/lib/etcd/restored/member; }
+check "snapshot restored into a new data directory" restored_ok
+if ! restored_ok; then
+  echo "Restore failed: leaving etcd on its original data so the cluster is not wiped."
+  echo; echo "$((failures + 1)) drill check(s) failed."; exit $((failures + 1))
+fi
 # point the static etcd pod at the restored data; the kubelet restarts it
 docker exec "$CP" sed -i 's#--data-dir=/var/lib/etcd$#--data-dir=/var/lib/etcd/restored#' /etc/kubernetes/manifests/etcd.yaml
 sleep 20
