@@ -73,7 +73,7 @@ kubectl rollout status deploy/db-tier --timeout=120s >/dev/null
 kubectl rollout status deploy/general --timeout=120s >/dev/null
 nodes_of() { kubectl get pods -l "app=$1" -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}' | sort -u | tr '\n' ' '; }
 check "db-tier runs only on the dedicated node ($(nodes_of db-tier))" test "$(nodes_of db-tier)" = "$W2 "
-check "general workloads stay off the tainted node ($(nodes_of general))" not grep -q "$W2" <<<"$(nodes_of general)"
+check "general workloads stay off the tainted node ($(nodes_of general))" not grep -qw "$W2" <<<"$(nodes_of general)"
 kubectl delete -f manifests/scheduling.yaml --wait=false >/dev/null
 kubectl taint node "$W2" dedicated=db:NoSchedule- >/dev/null
 
@@ -85,7 +85,7 @@ if ! out=$(kubectl drain "$W1" --ignore-daemonsets --delete-emptydir-data --time
   echo "::error title=drain::$(echo "$out" | tail -8 | cut -c1-250 | sed ':a;N;$!ba;s/\n/%0A/g')"
 fi
 check "drained node is unschedulable" test "$(kubectl get node "$W1" -o jsonpath='{.spec.unschedulable}')" = "true"
-off_w1() { ! kubectl get pods -l app=web --field-selector=status.phase!=Succeeded -o jsonpath='{.items[*].spec.nodeName}' | grep -q "$W1"; }
+off_w1() { ! kubectl get pods -l app=web --field-selector=status.phase!=Succeeded -o jsonpath='{.items[*].spec.nodeName}' | grep -qw "$W1"; }
 check "no web pods left on the drained node" retry 20 off_w1
 web_ready() { [ "$(kubectl get deploy web -o jsonpath='{.status.readyReplicas}')" = "3" ]; }
 check "all 3 web pods are running elsewhere" retry 30 web_ready

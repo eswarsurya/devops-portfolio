@@ -3,7 +3,8 @@ mock_provider "azurerm" {}
 
 # AKS creates the kubelet identity itself; give the mock one so the AcrPull assignment can reference it
 override_resource {
-  target = azurerm_kubernetes_cluster.this
+  target          = azurerm_kubernetes_cluster.this
+  override_during = plan
   values = {
     kubelet_identity = [{
       client_id                 = "00000000-0000-0000-0000-00000000000a"
