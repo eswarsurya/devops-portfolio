@@ -1,0 +1,113 @@
+name: linux-troubleshooting-lab
+
+on:
+  push:
+    branches: [main, "build/linux-troubleshooting-lab"]
+    paths:
+      - "projects/linux-troubleshooting-lab/**"
+      - ".github/workflows/linux-troubleshooting-lab-ci.yml"
+  pull_request:
+    paths:
+      - "projects/linux-troubleshooting-lab/**"
+      - ".github/workflows/linux-troubleshooting-lab-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    outputs:
+      scenarios: ${{ steps.list.outputs.scenarios }}
+    defaults:
+      run:
+        working-directory: projects/linux-troubleshooting-lab
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck
+        run: |
+          shellcheck --version | head -2
+          shellcheck run-scenario.sh lib/lab.sh scenarios/*/*.sh
+      - name: Python syntax
+        run: python3 -m py_compile lib/httpd.py scenarios/*/*.py
+      - name: Every scenario is complete, and diagnose never reads the planted answer
+        run: |
+          status=0
+          for dir in scenarios/*/; do
+            name="$(basename "$dir")"
+            for f in break.sh diagnose.sh fix.sh verify.sh cleanup.sh README.md; do
+              [[ -f "$dir$f" ]] || { echo "::error title=$name::missing $f"; status=1; }
+            done
+            if grep -nE 'LAB_ANSWER|answers/' "${dir}diagnose.sh" "${dir}verify.sh"; then
+              echo "::error title=$name::diagnose.sh or verify.sh reads the planted answer"
+              status=1
+            fi
+          done
+          exit $status
+      - id: list
+        name: List scenarios for the matrix
+        run: echo "scenarios=$(ls scenarios | jq -R . | jq -cs .)" >> "$GITHUB_OUTPUT"
+
+  scenario:
+    needs: lint
+    name: ${{ matrix.scenario }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: ${{ fromJSON(needs.lint.outputs.scenarios) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install troubleshooting tools
+        run: |
+          echo "wireshark-common wireshark-common/install-setuid boolean false" | sudo debconf-set-selections
+          sudo apt-get update -q
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
+            tcpdump tshark strace sysstat lsof dnsutils iproute2 iputils-ping nftables \
+            dnsmasq-base nginx psmisc procps curl openssl gcc libc6-dev
+          # tc netem lives in a kernel module; on some kernels it ships in modules-extra.
+          sudo modprobe sch_netem 2>/dev/null \
+            || { sudo apt-get install -y -q "linux-modules-extra-$(uname -r)" && sudo modprobe sch_netem; } \
+            || echo "::warning::sch_netem not available"
+          uname -r
+          systemctl --version | head -1
+          stat -fc 'cgroup filesystem: %T' /sys/fs/cgroup
+
+      - name: Run scenario (break, verify fault, diagnose, fix, verify)
+        run: |
+          sudo GITHUB_STEP_SUMMARY="$GITHUB_STEP_SUMMARY" \
+            projects/linux-troubleshooting-lab/run-scenario.sh "${{ matrix.scenario }}"
+
+      - name: Check nothing was left behind on the runner
+        if: always()
+        run: |
+          left=""
+          [[ -z "$(ip netns list)" ]] || left+="network namespaces: $(ip netns list | tr '\n' ' ')%0A"
+          ! findmnt -rn -o TARGET | grep -q '^/srv/linux-lab' || left+="mounts under /srv/linux-lab*%0A"
+          ! systemctl list-units --all --plain --no-legend 'lab-*' | grep -q . || left+="systemd units lab-*%0A"
+          ! pgrep -x 'report-worker|cache-worker|batch-parent|upload-api|audit-logger|job-consumer|job-producer' >/dev/null \
+            || left+="lab processes still running%0A"
+          if [[ -n "$left" ]]; then
+            echo "::error title=${{ matrix.scenario }}: cleanup::left behind:%0A$left"
+            exit 1
+          fi
+          echo "Runner is clean."
+
+      - name: Make evidence readable
+        if: always()
+        run: sudo chmod -R a+rX /tmp/linux-lab/artifacts || true
+
+      - name: Upload evidence (logs and packet captures)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-${{ matrix.scenario }}
+          path: /tmp/linux-lab/artifacts/${{ matrix.scenario }}
+          if-no-files-found: ignore
