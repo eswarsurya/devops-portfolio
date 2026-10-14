@@ -40,6 +40,10 @@ case "${1:-}" in
     done
     call "$API/execution/$exec_id/output?format=json" | python3 -c "import json,sys; [print('   ', e.get('log','')) for e in json.load(sys.stdin).get('entries',[])]"
     echo "job '$2' -> $st"
+    if [ "$st" != succeeded ] && [ -n "${GITHUB_ACTIONS:-}" ] && [ -z "${EXPECT_FAILURE:-}" ]; then
+      log=$(call "$API/execution/$exec_id/output?format=json" | python3 -c "import json,sys; print('\n'.join(e.get('log','') for e in json.load(sys.stdin).get('entries',[]))[-1200:])")
+      echo "::warning title=Rundeck job '$2' -> $st::$(echo "$log" | tail -12 | sed ':a;N;$!ba;s/\n/%0A/g')"
+    fi
     [ "$st" = succeeded ]
     ;;
   *) sed -n '2,4p' "$0"; exit 1 ;;

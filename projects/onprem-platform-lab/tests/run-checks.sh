@@ -48,7 +48,11 @@ check "HSTS header is set" hsts
 # ------------------------------------------------------------------
 section "WordPress on Apache/PHP through the load balancer"
 wp_ready() { https "https://$HOST:8443/wp-admin/install.php" | grep -q "WordPress"; }
-check "WordPress installer loads (PHP connected to MySQL through db1)" retry 20 wp_ready
+check "WordPress installer loads (PHP connected to MySQL through db1)" retry 20 wp_ready || true
+if ! wp_ready; then
+  page=$(https -i "https://$HOST:8443/wp-admin/install.php" | head -c 1500 | tr -d '\r')
+  echo "::warning title=WordPress response::$(echo "$page" | grep -vi '^<link\|^<meta' | head -14 | cut -c1-200 | sed ':a;N;$!ba;s/\n/%0A/g')"
+fi
 
 served_by() { https -o /dev/null -D - "https://$HOST:8443/ops/" | sed -n 's/^x-served-by: *//Ip' | tr -d '\r'; }
 nodes=$(for _ in $(seq 1 12); do served_by; sleep 0.2; done | sort -u | tr '\n' ' ')
@@ -93,7 +97,7 @@ section "Rundeck runbooks and replication alerting"
 check "replication check job succeeds while replication is healthy" ./scripts/rundeck.sh run "Replication health check"
 sql db3 "STOP REPLICA SQL_THREAD"
 echo "      (stopped the SQL thread on db3 to simulate broken replication)"
-check "replication check job fails when db3 stops applying changes" not ./scripts/rundeck.sh run "Replication health check"
+check "replication check job fails when db3 stops applying changes" not env EXPECT_FAILURE=1 ./scripts/rundeck.sh run "Replication health check"
 alerts() { docker compose exec -T alert-receiver wget -qO- http://localhost:9000/alerts; }
 fired() { alerts | grep -q '"type": "alert".*replication-health'; }
 check "an alert was sent to the alert receiver" retry 10 fired
@@ -113,7 +117,7 @@ check "the 429s are tagged rate_limited in Elasticsearch" retry 10 has_docs "ngi
 check "Metricbeat is collecting MySQL metrics" retry 30 has_docs "metricbeat-*" "event.module:mysql"
 check "Metricbeat is collecting Nginx metrics" retry 30 has_docs "metricbeat-*" "event.module:nginx"
 check "replication check results are indexed (replication-health)" retry 10 has_docs "replication-health"
-for monitor in portal-https mysql ldap kibana rundeck; do
+for monitor in portal-https mysql-db1 mysql-db2 mysql-db3 ldap kibana rundeck; do
   check "Heartbeat reports monitor '$monitor' up" retry 40 has_docs "heartbeat-*" "monitor.id:$monitor%20AND%20monitor.status:up"
 done
 kibana_ok() { curl -fsS http://localhost:5601/api/status | python3 -c "import json,sys; sys.exit(0 if json.load(sys.stdin)['status']['overall']['level']=='available' else 1)"; }

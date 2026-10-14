@@ -8,10 +8,20 @@ heartbeat.monitors:
     ssl.verification_mode: none     # lab CA (Pebble) is not in the beat's trust store
     check.response.status: [200, 302]
   - type: tcp
-    id: mysql
-    name: MySQL nodes
+    id: mysql-db1
+    name: MySQL db1
     schedule: "@every 10s"
-    hosts: ["db1:3306", "db2:3306", "db3:3306"]
+    hosts: ["db1:3306"]
+  - type: tcp
+    id: mysql-db2
+    name: MySQL db2
+    schedule: "@every 10s"
+    hosts: ["db2:3306"]
+  - type: tcp
+    id: mysql-db3
+    name: MySQL db3
+    schedule: "@every 10s"
+    hosts: ["db3:3306"]
   - type: tcp
     id: ldap
     name: OpenLDAP
