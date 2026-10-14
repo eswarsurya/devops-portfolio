@@ -1,6 +1,18 @@
 # Unit tests: plan against a mocked azurerm provider (no subscription needed)
 mock_provider "azurerm" {}
 
+# AKS creates the kubelet identity itself; give the mock one so the AcrPull assignment can reference it
+override_resource {
+  target = azurerm_kubernetes_cluster.this
+  values = {
+    kubelet_identity = [{
+      client_id                 = "00000000-0000-0000-0000-00000000000a"
+      object_id                 = "00000000-0000-0000-0000-00000000000b"
+      user_assigned_identity_id = "/subscriptions/0/resourceGroups/rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/kubelet"
+    }]
+  }
+}
+
 run "secure_cluster_defaults" {
   command = plan
 

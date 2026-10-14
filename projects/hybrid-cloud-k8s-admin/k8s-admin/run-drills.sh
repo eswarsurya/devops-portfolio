@@ -81,7 +81,9 @@ kubectl taint node "$W2" dedicated=db:NoSchedule- >/dev/null
 section "4. Node maintenance: cordon and drain with a PodDisruptionBudget"
 kubectl apply -f manifests/maintenance.yaml >/dev/null
 kubectl rollout status deploy/web --timeout=180s >/dev/null
-kubectl drain "$W1" --ignore-daemonsets --delete-emptydir-data --timeout=180s >/dev/null 2>&1
+if ! out=$(kubectl drain "$W1" --ignore-daemonsets --delete-emptydir-data --timeout=180s 2>&1); then
+  echo "::error title=drain::$(echo "$out" | tail -8 | cut -c1-250 | sed ':a;N;$!ba;s/\n/%0A/g')"
+fi
 check "drained node is unschedulable" test "$(kubectl get node "$W1" -o jsonpath='{.spec.unschedulable}')" = "true"
 off_w1() { ! kubectl get pods -l app=web --field-selector=status.phase!=Succeeded -o jsonpath='{.items[*].spec.nodeName}' | grep -q "$W1"; }
 check "no web pods left on the drained node" retry 20 off_w1
@@ -126,12 +128,13 @@ etcdctl() {
 }
 kubectl create configmap backup-marker --from-literal=taken="$(date -u +%FT%TZ)" >/dev/null
 check "snapshot saved" etcdctl snapshot save /var/lib/etcd/backup.db
-echo "      $(kubectl -n kube-system exec "$ETCD_POD" -- etcdutl snapshot status /var/lib/etcd/backup.db -w table 2>/dev/null | sed -n 4p)"
+echo "      $(etcdctl snapshot status /var/lib/etcd/backup.db -w table 2>/dev/null | sed -n 4p)"
 kubectl delete configmap backup-marker >/dev/null
 check "marker deleted after the snapshot (simulated accident)" not kubectl get configmap backup-marker
 PEER=$(docker exec "$CP" sed -n 's/.*--initial-advertise-peer-urls=//p' /etc/kubernetes/manifests/etcd.yaml)
 echo "      peer URL: $PEER"
-if ! out=$(kubectl -n kube-system exec "$ETCD_POD" -- etcdutl snapshot restore /var/lib/etcd/backup.db \
+# the etcd image that ships with Kubernetes has etcdctl but not etcdutl, so restore with etcdctl
+if ! out=$(etcdctl snapshot restore /var/lib/etcd/backup.db \
     --data-dir /var/lib/etcd/restored --name "$CP" --initial-cluster "$CP=$PEER" \
     --initial-advertise-peer-urls "$PEER" 2>&1); then
   echo "::error title=etcdutl restore::$(echo "$out" | tail -8 | cut -c1-250 | sed ':a;N;$!ba;s/\n/%0A/g')"

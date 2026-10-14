@@ -85,7 +85,7 @@ Each drill does the task and then asserts the result.
 | Node maintenance | Drains a worker while a PodDisruptionBudget keeps 2 of 3 pods up, checks the pods moved, then uncordons |
 | NetworkPolicy | Default-deny ingress for a namespace, then allows only the frontend on port 80. Proves the frontend gets in and other pods are blocked |
 | Troubleshooting | Diagnoses a rollout stuck on an image pull error, fixes it, then reverts a second bad release with `kubectl rollout undo` |
-| etcd backup and restore | Takes an `etcdctl` snapshot, deletes an object, restores the snapshot with `etcdutl` into a new data directory, points the static etcd pod at it, and proves the object is back |
+| etcd backup and restore | Takes an `etcdctl` snapshot, deletes an object, restores the snapshot with `etcdctl` into a new data directory, points the static etcd pod at it, and proves the object is back |
 
 ## OpenSearch cluster administration
 
