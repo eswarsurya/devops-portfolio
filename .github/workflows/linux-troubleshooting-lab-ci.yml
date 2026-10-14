@@ -111,8 +111,8 @@ jobs:
           for f in break verify-broken diagnose fix verify-fixed; do echo "===== $f.log"; cat "$d/$f.log" 2>/dev/null; done > /tmp/all.log
           python3 - <<'EOF'
           text = open("/tmp/all.log", errors="replace").read()
-          size = 7000
-          for i in range(0, min(len(text), size * 9), size):
+          size = 4000
+          for i in range(0, min(len(text), size * 10), size):
               chunk = text[i:i + size].replace("%", "%25").replace("\r", "").replace("\n", "%0A")
               print(f"::notice title=evidence part {i // size + 1}::{chunk}")
           EOF
