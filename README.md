@@ -64,4 +64,4 @@ Demos intended to run locally without creating cloud resources include AIOps Tri
 - Email: [eswardanaboina@gmail.com](mailto:eswardanaboina@gmail.com)
 - LinkedIn: https://www.linkedin.com/in/eswarsurya76/
 - GitHub: https://github.com/eswarsurya
-- Existing portfolio: https://eswardanaboina.vercel.app/ (not replaced without review)
+- Portfolio site: https://eswarsuryadanaboina.vercel.app/
