@@ -7,11 +7,11 @@ source "$HERE/../../lib/lab.sh"
 PCAP="$ARTIFACTS/firewall-drop-vs-reject.pcap"
 
 step "1. Start a packet capture on the client while we test"
-ip netns exec lab-fw-cli tcpdump -Z root -i veth-fw-cli -nn -U -w "$PCAP" 'tcp port 8080 or tcp port 8081' \
+ip netns exec lab-fw-cli tcpdump -Z root --immediate-mode -i veth-fw-cli -nn -U -w "$PCAP" 'tcp port 8080 or tcp port 8081' \
   > "$STATE/tcpdump.log" 2>&1 &
 tcpdump_pid=$!
 wait_until 5 grep -q 'listening on' "$STATE/tcpdump.log"
-echo "$ ip netns exec lab-fw-cli tcpdump -Z root -i veth-fw-cli -nn -U -w $(basename "$PCAP") 'tcp port 8080 or tcp port 8081'"
+echo "$ ip netns exec lab-fw-cli tcpdump -Z root --immediate-mode -i veth-fw-cli -nn -U -w $(basename "$PCAP") 'tcp port 8080 or tcp port 8081'"
 
 step "2. Time both connections (connect timeout 3s)"
 result() {
@@ -26,7 +26,7 @@ r8081="$(result 8081)"
 echo "8080: $r8080 (curl exit 28 = gave up waiting; no answer at all)"
 echo "8081: $r8081 (curl exit 7 = actively refused, at once)"
 
-sleep 1
+sleep 2
 kill -INT "$tcpdump_pid" 2>/dev/null
 wait "$tcpdump_pid" 2>/dev/null
 

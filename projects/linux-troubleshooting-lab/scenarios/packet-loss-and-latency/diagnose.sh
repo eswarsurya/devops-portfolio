@@ -12,11 +12,11 @@ show ip netns exec lab-net-cli ping -c 15 -i 0.2 -q 10.204.1.1
 echo "The first hop (the router) is already slow and lossy, so the problem is on the client <-> router link."
 
 step "2. Capture on the server while a 1 MB download runs"
-ip netns exec lab-net-srv tcpdump -Z root -i veth-net-srv -nn -U -s 128 -w "$PCAP" 'tcp port 8080' \
+ip netns exec lab-net-srv tcpdump -Z root --immediate-mode -i veth-net-srv -nn -U -s 128 -w "$PCAP" 'tcp port 8080' \
   > "$STATE/tcpdump.log" 2>&1 &
 tcpdump_pid=$!
 wait_until 5 grep -q 'listening on' "$STATE/tcpdump.log"
-echo "$ ip netns exec lab-net-srv tcpdump -Z root -i veth-net-srv -nn -s 128 -w $(basename "$PCAP") 'tcp port 8080'"
+echo "$ ip netns exec lab-net-srv tcpdump -Z root --immediate-mode -i veth-net-srv -nn -s 128 -w $(basename "$PCAP") 'tcp port 8080'"
 
 ip netns exec lab-net-cli curl -s -o /dev/null --max-time 90 \
   -w 'downloaded %{size_download} bytes in %{time_total}s (%{speed_download} bytes/s)\n' \
@@ -33,7 +33,7 @@ echo "Look at: rtt (smoothed RTT/variance, ms), retrans (in flight now/total), l
 
 wait "$curl_pid"
 cat "$STATE/curl.txt"
-sleep 0.5
+sleep 1
 kill -INT "$tcpdump_pid" 2>/dev/null
 wait "$tcpdump_pid" 2>/dev/null
 
