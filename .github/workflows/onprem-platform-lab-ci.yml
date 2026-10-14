@@ -25,7 +25,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: ShellCheck
-        run: shellcheck scripts/*.sh tests/*.sh vpn/start.sh
+        run: |
+          shellcheck --version | sed -n 2p
+          shellcheck -f gcc scripts/*.sh tests/*.sh vpn/start.sh | tee sc.txt || {
+            sed 's/^\(.*\)$/::error::\1/' sc.txt | head -10; exit 1; }
       - name: Compose file is valid
         run: cp .env.example .env && docker compose config --quiet
       - name: Alert receiver compiles
