@@ -39,11 +39,13 @@ show systemctl show lab-cache.service -p MemoryMax -p MemorySwapMax -p OOMPolicy
 
 step "4. What is in the cgroup now, and how fast does it grow?"
 show systemd-cgls --no-pager -u "$(basename "$memcg")"
-for i in 1 2 3; do
-  echo "memory.current sample $i: $(cat "$cg/memory.current")"
+echo "memory.current every 0.5s for 5s (the supervisor restarts the worker 2s after each kill):"
+for i in $(seq 1 10); do
+  printf '  %4ss  %10s bytes  oom_kill=%s\n' "$(( i * 5 / 10 )).$(( i * 5 % 10 ))" \
+    "$(cat "$cg/memory.current")" "$(awk '$1 == "oom_kill" {print $2}' "$cg/memory.events")"
   sleep 0.5
 done
-echo "Memory climbs straight back up after every restart: a leak, not a one-off spike."
+echo "Each new worker grows towards the limit and is killed again: a leak, not a one-off spike."
 
 finding unit "$(basename "$memcg")"
 finding killed_comm "$killed_comm"
