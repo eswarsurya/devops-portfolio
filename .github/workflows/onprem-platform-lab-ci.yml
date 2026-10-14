@@ -27,8 +27,9 @@ jobs:
       - name: ShellCheck
         run: |
           shellcheck --version | sed -n 2p
-          shellcheck -f gcc scripts/*.sh tests/*.sh vpn/start.sh | tee sc.txt || {
-            sed 's/^\(.*\)$/::error::\1/' sc.txt | head -10; exit 1; }
+          if ! shellcheck -f gcc scripts/*.sh tests/*.sh vpn/start.sh > sc.txt; then
+            sed 's/^/::error::/' sc.txt | head -10; exit 1
+          fi
       - name: Compose file is valid
         run: cp .env.example .env && docker compose config --quiet
       - name: Alert receiver compiles
