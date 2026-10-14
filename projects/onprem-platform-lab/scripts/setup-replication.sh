@@ -16,7 +16,14 @@ for node in db1 db2 db3; do
     sql "$node" "SELECT 1" >/dev/null 2>&1 && break
     sleep 2
   done
-  sql "$node" "SELECT 1" >/dev/null
+  if ! sql "$node" "SELECT 1" >/dev/null; then
+    echo "diagnostics for $node:"
+    docker compose exec -T "$node" sh -c 'echo "root pw length: ${#MYSQL_ROOT_PASSWORD}"; mysql --version;
+      mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -e "SELECT CONCAT(\"-p works as \", CURRENT_USER())" 2>&1 | tail -1;
+      MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot -h127.0.0.1 -N -e "SELECT \"tcp+MYSQL_PWD works\"" 2>&1 | tail -1;
+      ls /docker-entrypoint-initdb.d' || true
+    exit 1
+  fi
   # start every node from an empty GTID history so auto-positioning lines up
   sql "$node" "RESET BINARY LOGS AND GTIDS"
 done
