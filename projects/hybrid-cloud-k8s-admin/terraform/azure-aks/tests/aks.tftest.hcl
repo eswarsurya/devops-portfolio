@@ -1,18 +1,6 @@
 # Unit tests: plan against a mocked azurerm provider (no subscription needed)
 mock_provider "azurerm" {}
 
-# AKS creates the kubelet identity itself; give the mock one so the AcrPull assignment can reference it
-override_resource {
-  target          = azurerm_kubernetes_cluster.this
-  override_during = plan
-  values = {
-    kubelet_identity = [{
-      client_id                 = "00000000-0000-0000-0000-00000000000a"
-      object_id                 = "00000000-0000-0000-0000-00000000000b"
-      user_assigned_identity_id = "/subscriptions/0/resourceGroups/rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/kubelet"
-    }]
-  }
-}
 
 run "secure_cluster_defaults" {
   command = plan
@@ -36,6 +24,10 @@ run "secure_cluster_defaults" {
   assert {
     condition     = azurerm_container_registry.this.admin_enabled == false && azurerm_role_assignment.aks_pull.role_definition_name == "AcrPull"
     error_message = "AKS must pull from ACR with its identity, not registry passwords"
+  }
+  assert {
+    condition     = azurerm_kubernetes_cluster.this.identity[0].type == "UserAssigned" && azurerm_role_assignment.control_plane_uses_kubelet_identity.role_definition_name == "Managed Identity Operator"
+    error_message = "control plane and kubelet identities must be created up front and linked"
   }
 }
 

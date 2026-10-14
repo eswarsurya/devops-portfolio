@@ -61,7 +61,7 @@ Kubernetes and OpenSearch healthy.
 
 - **AKS** (`terraform/azure-aks`): Entra ID login with Azure RBAC and local accounts disabled, Azure CNI overlay with
   network policy, workload identity, a system pool for system pods only, an autoscaling user pool across three zones,
-  Container Insights, planned weekly patch upgrades, and AKS pulling from ACR with its own identity (no registry passwords).
+  Container Insights, planned weekly patch upgrades, and user-assigned control-plane and kubelet identities created up front, so nodes pull from ACR with the AcrPull role from the first boot (no registry passwords).
 - **Azure DevOps** (`pipelines/azure-pipelines.yml`): build stage (lint, unit tests with published results, image build,
   Trivy scan that blocks fixable critical CVEs, push to ACR), then release stages to AKS dev and prod as deployment
   jobs. Production waits for the approval configured on the `aks-prod` environment. The shared release template runs

@@ -45,6 +45,29 @@ resource "azurerm_container_registry" "this" {
   tags                = local.tags
 }
 
+# Identities created up front: the control plane's, and the kubelet's (used by nodes to pull images).
+# Creating the kubelet identity ourselves means its AcrPull permission exists before the first node starts.
+resource "azurerm_user_assigned_identity" "control_plane" {
+  name                = "id-${local.name}-control-plane"
+  location            = azurerm_resource_group.this.location
+  resource_group_name = azurerm_resource_group.this.name
+  tags                = local.tags
+}
+
+resource "azurerm_user_assigned_identity" "kubelet" {
+  name                = "id-${local.name}-kubelet"
+  location            = azurerm_resource_group.this.location
+  resource_group_name = azurerm_resource_group.this.name
+  tags                = local.tags
+}
+
+# the control plane must be allowed to assign the kubelet identity to nodes
+resource "azurerm_role_assignment" "control_plane_uses_kubelet_identity" {
+  scope                = azurerm_user_assigned_identity.kubelet.id
+  role_definition_name = "Managed Identity Operator"
+  principal_id         = azurerm_user_assigned_identity.control_plane.principal_id
+}
+
 resource "azurerm_kubernetes_cluster" "this" {
   name                      = "aks-${local.name}"
   location                  = azurerm_resource_group.this.location
@@ -70,7 +93,14 @@ resource "azurerm_kubernetes_cluster" "this" {
   }
 
   identity {
-    type = "SystemAssigned"
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.control_plane.id]
+  }
+
+  kubelet_identity {
+    client_id                 = azurerm_user_assigned_identity.kubelet.client_id
+    object_id                 = azurerm_user_assigned_identity.kubelet.principal_id
+    user_assigned_identity_id = azurerm_user_assigned_identity.kubelet.id
   }
 
   azure_active_directory_role_based_access_control {
@@ -101,6 +131,8 @@ resource "azurerm_kubernetes_cluster" "this" {
   }
 
   tags = local.tags
+
+  depends_on = [azurerm_role_assignment.control_plane_uses_kubelet_identity]
 }
 
 resource "azurerm_kubernetes_cluster_node_pool" "user" {
@@ -124,5 +156,5 @@ resource "azurerm_kubernetes_cluster_node_pool" "user" {
 resource "azurerm_role_assignment" "aks_pull" {
   scope                = azurerm_container_registry.this.id
   role_definition_name = "AcrPull"
-  principal_id         = azurerm_kubernetes_cluster.this.kubelet_identity[0].object_id
+  principal_id         = azurerm_user_assigned_identity.kubelet.principal_id
 }
