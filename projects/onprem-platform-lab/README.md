@@ -25,7 +25,7 @@ the whole thing on every change and runs end-to-end checks against it.
                  └── replication ──▶ MySQL db3 (read replica, super_read_only)
 
   ELK: Logstash (Nginx logs) → Elasticsearch ← Metricbeat (MySQL, Nginx, system) ← Heartbeat (uptime)  → Kibana
-  Rundeck runbooks: replication health check every minute → alert on failure, recovery notice on success
+  Rundeck runbooks: replication health check every minute → error handler pages on failure, recovery notice when healthy
 ```
 
 | Area | What runs |
@@ -38,7 +38,7 @@ the whole thing on every change and runs end-to-end checks against it.
 | Certificates | Certbot gets the certificate over ACME from Pebble, Let's Encrypt's own test CA, the same HTTP-01 flow as production |
 | VPN | WireGuard tunnel between a branch-office gateway and the data-centre gateway, routing the branch into the lab network |
 | Logs, metrics, uptime | Elasticsearch, Logstash, Kibana, Metricbeat and Heartbeat (8.15) |
-| Runbook automation | Rundeck jobs: replication health check (scheduled, with alert and recovery notifications) and an LDAP access audit |
+| Runbook automation | Rundeck jobs: replication health check every minute (its error handler pages on-call when a replica breaks; a recovery notice follows when it's healthy again) and an LDAP access audit |
 | Security patching | A Log4Shell (CVE-2021-44228) remediation, see [log4j-remediation](log4j-remediation) |
 
 ## How it's tested
