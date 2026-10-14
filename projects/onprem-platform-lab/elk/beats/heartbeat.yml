@@ -1,0 +1,44 @@
+# Uptime checks for everything a user or another service depends on
+heartbeat.monitors:
+  - type: http
+    id: portal-https
+    name: Portal (Nginx, HTTPS)
+    schedule: "@every 10s"
+    urls: ["https://nginx/"]
+    ssl.verification_mode: none     # lab CA (Pebble) is not in the beat's trust store
+    check.response.status: [200, 302]
+  - type: tcp
+    id: mysql-db1
+    name: MySQL db1
+    schedule: "@every 10s"
+    hosts: ["db1:3306"]
+  - type: tcp
+    id: mysql-db2
+    name: MySQL db2
+    schedule: "@every 10s"
+    hosts: ["db2:3306"]
+  - type: tcp
+    id: mysql-db3
+    name: MySQL db3
+    schedule: "@every 10s"
+    hosts: ["db3:3306"]
+  - type: tcp
+    id: ldap
+    name: OpenLDAP
+    schedule: "@every 10s"
+    hosts: ["ldap:389"]
+  - type: http
+    id: kibana
+    name: Kibana
+    schedule: "@every 30s"
+    urls: ["http://kibana:5601/api/status"]
+  - type: http
+    id: rundeck
+    name: Rundeck
+    schedule: "@every 30s"
+    urls: ["http://rundeck:4440/"]
+    check.response.status: [200, 302]
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+logging.level: warning

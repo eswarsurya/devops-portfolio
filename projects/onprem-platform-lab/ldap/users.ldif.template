@@ -1,0 +1,34 @@
+# Rendered by scripts/render-config.sh, which fills in the passwords from .env
+dn: ou=people,dc=dublin-dc,dc=lab
+objectClass: organizationalUnit
+ou: people
+
+dn: ou=groups,dc=dublin-dc,dc=lab
+objectClass: organizationalUnit
+ou: groups
+
+dn: uid=alice,ou=people,dc=dublin-dc,dc=lab
+objectClass: inetOrgPerson
+uid: alice
+cn: Alice Byrne
+sn: Byrne
+mail: alice@dublin-dc.lab
+userPassword: __ALICE_PASSWORD__
+
+dn: uid=bob,ou=people,dc=dublin-dc,dc=lab
+objectClass: inetOrgPerson
+uid: bob
+cn: Bob Murphy
+sn: Murphy
+mail: bob@dublin-dc.lab
+userPassword: __BOB_PASSWORD__
+
+dn: cn=sre,ou=groups,dc=dublin-dc,dc=lab
+objectClass: groupOfNames
+cn: sre
+member: uid=alice,ou=people,dc=dublin-dc,dc=lab
+
+dn: cn=developers,ou=groups,dc=dublin-dc,dc=lab
+objectClass: groupOfNames
+cn: developers
+member: uid=bob,ou=people,dc=dublin-dc,dc=lab

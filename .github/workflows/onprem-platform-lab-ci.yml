@@ -1,0 +1,114 @@
+name: onprem-platform-lab
+
+on:
+  push:
+    branches: [main, "build/onprem-*"]
+    paths:
+      - "projects/onprem-platform-lab/**"
+      - ".github/workflows/onprem-platform-lab-ci.yml"
+  pull_request:
+    paths:
+      - "projects/onprem-platform-lab/**"
+      - ".github/workflows/onprem-platform-lab-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: projects/onprem-platform-lab
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck
+        run: |
+          shellcheck --version | sed -n 2p
+          if ! shellcheck -f gcc scripts/*.sh tests/*.sh vpn/start.sh > sc.txt; then
+            sed 's/^/::error::/' sc.txt | head -10; exit 1
+          fi
+      - name: Compose file is valid
+        run: cp .env.example .env && docker compose config --quiet
+      - name: Alert receiver compiles
+        run: python3 -m py_compile alert-receiver/receiver.py
+
+  # The scanner must flag the vulnerable build and pass the fixed one.
+  log4j-remediation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Vulnerable build is flagged for Log4Shell
+        run: |
+          docker run --rm -v "$PWD/log4j-remediation:/src" aquasec/trivy:0.56.2 fs --quiet --scanners vuln \
+            --severity CRITICAL --format table /src/vulnerable | tee vulnerable.txt
+          grep -q CVE-2021-44228 vulnerable.txt
+      - name: Fixed build has no critical findings
+        run: |
+          docker run --rm -v "$PWD/log4j-remediation:/src" aquasec/trivy:0.56.2 fs --quiet --scanners vuln \
+            --severity CRITICAL --exit-code 1 /src/fixed
+
+  # Starts the whole data centre and runs every check in tests/run-checks.sh.
+  end-to-end:
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load the WireGuard kernel module
+        run: sudo modprobe wireguard && lsmod | grep -q wireguard
+
+      - name: Generate throwaway passwords, keys and config
+        run: |
+          ./scripts/render-config.sh --generate
+          while IFS='=' read -r _ value; do echo "::add-mask::$value"; done < .env
+
+      - name: Build and start the lab
+        run: |
+          if ! docker compose up -d --build > up.log 2>&1; then
+            tail -25 up.log
+            echo "::error title=compose up failed::$(grep -v '^ *#\|Pulling\|Pulled\|Waiting\|Downloading\|Extracting' up.log | tail -15 | sed ':a;N;$!ba;s/\n/%0A/g')"
+            exit 1
+          fi
+
+      - name: Wait for the databases, then wire up replication
+        run: |
+          if ! ./scripts/setup-replication.sh > step.log 2>&1; then
+            cat step.log
+            echo "::error title=Wait for the databases, then wire up replication failed::$(tail -15 step.log | cut -c1-250 | sed ':a;N;$!ba;s/\n/%0A/g')"
+            exit 1
+          fi
+          cat step.log
+
+      - name: Import the Rundeck runbooks
+        run: |
+          if ! ./scripts/rundeck.sh import > step.log 2>&1; then
+            cat step.log
+            echo "::error title=Import the Rundeck runbooks failed::$(tail -15 step.log | cut -c1-250 | sed ':a;N;$!ba;s/\n/%0A/g')"
+            exit 1
+          fi
+          cat step.log
+
+      - name: End-to-end checks
+        run: ./tests/run-checks.sh
+
+      - name: Show container state and logs on failure
+        if: failure()
+        run: |
+          docker compose ps -a
+          for svc in $(docker compose config --services); do
+            echo "----- $svc"; docker compose logs --no-color --tail=40 "$svc" 2>&1 || true
+          done
+          # also surface short log tails as annotations, readable without opening the run
+          echo "::warning title=container states::$(docker compose ps -a --format '{{.Service}} {{.State}} {{.Status}}' | sed ':a;N;$!ba;s/\n/%0A/g')"
+          for svc in $(docker compose ps -a --format '{{.Service}} {{.State}} {{.Health}}' | awk '$2!="running" || $3=="unhealthy" {print $1}' | grep -v certbot | head -8); do
+            tail=$(docker compose logs --no-color --tail=12 "$svc" 2>&1 | cut -c1-300 | sed ':a;N;$!ba;s/\n/%0A/g')
+            echo "::warning title=logs: $svc::$tail"
+          done
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
