@@ -1,0 +1,3 @@
+# .env is generated at run time; helper functions are called through check()/retry()
+# (SC2317 is the older shellcheck code for the same "never invoked" finding)
+disable=SC1091,SC2317,SC2329

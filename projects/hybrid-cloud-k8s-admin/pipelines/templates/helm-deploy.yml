@@ -1,0 +1,30 @@
+# Shared release steps: get AKS credentials, Helm deploy (atomic: rolls back by itself on failure), smoke test
+parameters:
+  - name: serviceConnection
+    type: string
+  - name: namespace
+    type: string
+  - name: valuesFile
+    type: string
+
+steps:
+  - task: HelmInstaller@1
+    inputs:
+      helmVersionToInstall: 3.16.2
+  - task: AzureCLI@2
+    displayName: Helm release and smoke test
+    inputs:
+      azureSubscription: ${{ parameters.serviceConnection }}
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        set -euo pipefail
+        az aks get-credentials --resource-group "$(aksResourceGroup)" --name "$(aksClusterName)" --overwrite-existing
+        kubelogin convert-kubeconfig -l azurecli
+        helm upgrade --install incident-api "$(Pipeline.Workspace)/chart" \
+          --namespace ${{ parameters.namespace }} --create-namespace \
+          -f "$(Pipeline.Workspace)/chart/${{ parameters.valuesFile }}" \
+          --set image.repository=$(acrLoginServer)/$(imageRepository) --set image.tag=$(tag) \
+          --atomic --wait --timeout 5m
+        kubectl -n ${{ parameters.namespace }} run smoke-$(Build.BuildId) --rm -i --restart=Never \
+          --image=curlimages/curl:8.10.1 -- curl -fsS http://incident-api/health

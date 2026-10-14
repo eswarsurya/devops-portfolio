@@ -1,0 +1,16 @@
+{
+  "index_patterns": ["logs-*"],
+  "priority": 100,
+  "template": {
+    "settings": { "number_of_shards": 3, "number_of_replicas": 1, "refresh_interval": "5s" },
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "service": { "type": "keyword" },
+        "level": { "type": "keyword" },
+        "message": { "type": "text" },
+        "latency_ms": { "type": "integer" }
+      }
+    }
+  }
+}
