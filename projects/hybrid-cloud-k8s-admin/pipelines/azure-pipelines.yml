@@ -1,0 +1,111 @@
+# Azure DevOps: build and release pipeline for the incident-api (projects/docker-cicd-pipeline)
+# Build:   lint, unit tests, image build, Trivy scan, push to ACR
+# Release: Helm deploy to AKS dev automatically, then to prod after an approval on the "prod" environment
+trigger:
+  branches:
+    include: [main]
+  paths:
+    include: [projects/docker-cicd-pipeline/*]
+
+pr:
+  branches:
+    include: [main]
+
+variables:
+  - group: aks-hybrid            # holds acrServiceConnection, aksServiceConnectionDev/Prod
+  - name: imageRepository
+    value: incident-api
+  - name: appPath
+    value: projects/docker-cicd-pipeline
+  - name: chartPath
+    value: projects/k8s-gitops-platform/charts/incident-api
+  - name: tag
+    value: $(Build.SourceVersion)
+
+stages:
+  - stage: Build
+    displayName: Build and test
+    jobs:
+      - job: test
+        pool:
+          vmImage: ubuntu-24.04
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: "3.12"
+          - script: |
+              pip install -r requirements-dev.txt
+              ruff check .
+              pytest -q --junitxml=$(Build.ArtifactStagingDirectory)/test-results.xml
+            workingDirectory: $(appPath)
+            displayName: Lint and unit tests
+          - task: PublishTestResults@2
+            condition: always()
+            inputs:
+              testResultsFiles: $(Build.ArtifactStagingDirectory)/test-results.xml
+
+      - job: image
+        dependsOn: test
+        pool:
+          vmImage: ubuntu-24.04
+        steps:
+          - task: Docker@2
+            displayName: Build image
+            inputs:
+              command: build
+              containerRegistry: $(acrServiceConnection)
+              repository: $(imageRepository)
+              Dockerfile: $(appPath)/Dockerfile
+              buildContext: $(appPath)
+              tags: $(tag)
+          - script: |
+              docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.56.2 image \
+                --severity CRITICAL --exit-code 1 --ignore-unfixed "$(acrLoginServer)/$(imageRepository):$(tag)"
+            displayName: Trivy scan (block on fixable critical CVEs)
+          - task: Docker@2
+            displayName: Push to ACR
+            condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+            inputs:
+              command: push
+              containerRegistry: $(acrServiceConnection)
+              repository: $(imageRepository)
+              tags: $(tag)
+          - publish: $(chartPath)
+            artifact: chart
+
+  - stage: DeployDev
+    displayName: Release to AKS dev
+    dependsOn: Build
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - deployment: dev
+        environment: aks-dev
+        pool:
+          vmImage: ubuntu-24.04
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - template: templates/helm-deploy.yml
+                  parameters:
+                    serviceConnection: $(aksServiceConnectionDev)
+                    namespace: incident-api
+                    valuesFile: values-dev.yaml
+
+  - stage: DeployProd
+    displayName: Release to AKS prod
+    dependsOn: DeployDev
+    jobs:
+      - deployment: prod
+        environment: aks-prod     # approvals and business-hours checks are configured on this environment
+        pool:
+          vmImage: ubuntu-24.04
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - template: templates/helm-deploy.yml
+                  parameters:
+                    serviceConnection: $(aksServiceConnectionProd)
+                    namespace: incident-api
+                    valuesFile: values-prod.yaml

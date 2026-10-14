@@ -1,0 +1,86 @@
+# GitLab CI for the same incident-api: the equivalent of the GitHub Actions and Azure DevOps pipelines.
+# In a GitLab project this file would be .gitlab-ci.yml at the repository root.
+stages: [lint, test, build, scan, deploy]
+
+variables:
+  APP_DIR: projects/docker-cicd-pipeline
+  IMAGE: $CI_REGISTRY_IMAGE/incident-api:$CI_COMMIT_SHORT_SHA
+  DOCKER_TLS_CERTDIR: "/certs"
+
+default:
+  interruptible: true
+
+.python:
+  image: python:3.12-slim
+  before_script:
+    - cd "$APP_DIR"
+    - pip install -q -r requirements-dev.txt
+  cache:
+    key: pip-$CI_COMMIT_REF_SLUG
+    paths: [.cache/pip]
+
+lint:
+  extends: .python
+  stage: lint
+  script:
+    - ruff check .
+
+unit-tests:
+  extends: .python
+  stage: test
+  script:
+    - pytest -q --junitxml=report.xml
+  artifacts:
+    when: always
+    reports:
+      junit: $APP_DIR/report.xml
+
+build-image:
+  stage: build
+  image: docker:27.3
+  services: [docker:27.3-dind]
+  script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    - docker build -t "$IMAGE" "$APP_DIR"
+    - docker push "$IMAGE"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+trivy-scan:
+  stage: scan
+  image:
+    name: aquasec/trivy:0.56.2
+    entrypoint: [""]
+  variables:
+    TRIVY_USERNAME: $CI_REGISTRY_USER
+    TRIVY_PASSWORD: $CI_REGISTRY_PASSWORD
+  script:
+    - trivy image --severity CRITICAL --exit-code 1 --ignore-unfixed "$IMAGE"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+.deploy:
+  stage: deploy
+  image: alpine/helm:3.16.2
+  script:
+    - helm upgrade --install incident-api projects/k8s-gitops-platform/charts/incident-api
+      --namespace incident-api --create-namespace
+      -f projects/k8s-gitops-platform/charts/incident-api/values-$CI_ENVIRONMENT_NAME.yaml
+      --set image.repository=$CI_REGISTRY_IMAGE/incident-api --set image.tag=$CI_COMMIT_SHORT_SHA
+      --atomic --wait --timeout 5m
+
+deploy-dev:
+  extends: .deploy
+  environment:
+    name: dev
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+deploy-prod:
+  extends: .deploy
+  environment:
+    name: prod
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual   # a person promotes to production
+  needs: [deploy-dev]

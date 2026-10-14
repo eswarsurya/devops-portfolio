@@ -1,0 +1,51 @@
+# A database-style workload pinned to the tainted node; ordinary workloads stay off it
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db-tier
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: db-tier }
+  template:
+    metadata:
+      labels: { app: db-tier }
+    spec:
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: db
+          effect: NoSchedule
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: tier
+                    operator: In
+                    values: [db]
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.10
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: general
+  namespace: default
+spec:
+  replicas: 4
+  selector:
+    matchLabels: { app: general }
+  template:
+    metadata:
+      labels: { app: general }
+    spec:
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.10
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }

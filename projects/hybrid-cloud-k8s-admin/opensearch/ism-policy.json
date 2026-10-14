@@ -1,0 +1,24 @@
+{
+  "policy": {
+    "description": "Application logs: searchable for 7 days, read-only after 2, deleted after 7",
+    "default_state": "hot",
+    "states": [
+      {
+        "name": "hot",
+        "actions": [],
+        "transitions": [{ "state_name": "warm", "conditions": { "min_index_age": "2d" } }]
+      },
+      {
+        "name": "warm",
+        "actions": [{ "read_only": {} }, { "replica_count": { "number_of_replicas": 1 } }],
+        "transitions": [{ "state_name": "delete", "conditions": { "min_index_age": "7d" } }]
+      },
+      {
+        "name": "delete",
+        "actions": [{ "delete": {} }],
+        "transitions": []
+      }
+    ],
+    "ism_template": [{ "index_patterns": ["logs-*"], "priority": 100 }]
+  }
+}
