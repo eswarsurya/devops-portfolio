@@ -22,8 +22,12 @@
     - exec: /opt/lab/run-with-env.sh /opt/lab/check-replication.sh
   notification:
     onfailure:
+      format: json
+      httpMethod: post
       urls: http://alert-receiver:9000/alert?source=rundeck&job=replication-health
     onsuccess:
+      format: json
+      httpMethod: post
       urls: http://alert-receiver:9000/resolve?source=rundeck&job=replication-health
 - name: SRE group membership audit
   group: access
