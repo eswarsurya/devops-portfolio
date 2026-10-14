@@ -67,7 +67,12 @@ jobs:
           while IFS='=' read -r _ value; do echo "::add-mask::$value"; done < .env
 
       - name: Build and start the lab
-        run: docker compose up -d --build
+        run: |
+          if ! docker compose up -d --build > up.log 2>&1; then
+            tail -25 up.log
+            echo "::error title=compose up failed::$(grep -v '^ *#\|Pulling\|Pulled\|Waiting\|Downloading\|Extracting' up.log | tail -15 | sed ':a;N;$!ba;s/\n/%0A/g')"
+            exit 1
+          fi
 
       - name: Wait for the databases, then wire up replication
         run: ./scripts/setup-replication.sh
@@ -86,7 +91,8 @@ jobs:
             echo "----- $svc"; docker compose logs --no-color --tail=40 "$svc" 2>&1 || true
           done
           # also surface short log tails as annotations, readable without opening the run
-          for svc in $(docker compose ps -a --format '{{.Service}} {{.State}}' | awk '$2!="running"{print $1}') db1 rundeck certbot nginx; do
+          echo "::warning title=container states::$(docker compose ps -a --format '{{.Service}} {{.State}} {{.Status}}' | sed ':a;N;$!ba;s/\n/%0A/g')"
+          for svc in $(docker compose ps -a --format '{{.Service}} {{.State}} {{.Health}}' | awk '$2!="running" || $3=="unhealthy" {print $1}' | grep -v certbot | head -8); do
             tail=$(docker compose logs --no-color --tail=12 "$svc" 2>&1 | cut -c1-300 | sed ':a;N;$!ba;s/\n/%0A/g')
             echo "::warning title=logs: $svc::$tail"
           done
