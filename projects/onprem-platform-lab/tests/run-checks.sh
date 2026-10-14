@@ -84,7 +84,7 @@ docker compose start web1 >/dev/null 2>&1
 # ------------------------------------------------------------------
 section "Site-to-site VPN (WireGuard)"
 check "branch gateway reaches the data-centre end of the tunnel" docker compose exec -T branch-gw ping -c 3 -W 2 10.99.0.1
-vpn_code=$(docker compose exec -T branch-gw curl -sk -o /dev/null -w '%{http_code}' --resolve "$HOST:443:172.30.10.10" "https://$HOST/ops/")
+vpn_code=$(docker compose exec -T branch-gw curl -sk -o /dev/null -w '%{http_code}' --resolve "$HOST:443:172.30.10.200" "https://$HOST/ops/")
 check "branch office reaches the portal inside the lab network through the tunnel ($vpn_code)" test "$vpn_code" = "401"
 check "tunnel has a recent handshake" sh -c "docker compose exec -T dc-gw wg show wg0 latest-handshakes | awk '{exit !(\$2 > 0)}'"
 

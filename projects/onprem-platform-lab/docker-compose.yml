@@ -112,7 +112,7 @@ services:
     ports: ["8080:80", "8443:443"]
     networks:
       lab:
-        ipv4_address: 172.30.10.10
+        ipv4_address: 172.30.10.200   # outside the dynamic range below
     depends_on:
       certbot: { condition: service_completed_successfully }
       web1: { condition: service_started }
@@ -220,7 +220,8 @@ services:
 networks:
   lab:
     ipam:
-      config: [{ subnet: 172.30.10.0/24 }]
+      # containers get addresses from .0-.127; .128 and up are kept for fixed addresses
+      config: [{ subnet: 172.30.10.0/24, ip_range: 172.30.10.0/25 }]
   wan:
     ipam:
       config: [{ subnet: 172.30.99.0/24 }]
