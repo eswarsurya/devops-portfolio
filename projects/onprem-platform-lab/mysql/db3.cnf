@@ -7,6 +7,5 @@ log_replica_updates      = ON
 binlog_format            = ROW
 relay_log                = relay-bin
 skip_name_resolve        = ON
-# read replica: only replication can write here
-read_only                = ON
-super_read_only          = ON
+# read replica: super_read_only is switched on by scripts/setup-replication.sh (SET PERSIST)
+# after first start, because the image's first-start setup needs to write the root user

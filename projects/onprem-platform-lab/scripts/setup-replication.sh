@@ -35,6 +35,8 @@ SOURCE_PASSWORD='${MYSQL_REPL_PASSWORD}', SOURCE_AUTO_POSITION=1, GET_SOURCE_PUB
 point_at db2 db1
 point_at db1 db2
 point_at db3 db1
+# db3 is a read replica: nothing but replication may write to it (persists across restarts)
+sql db3 "SET PERSIST super_read_only = ON"
 
 sql db1 "CREATE DATABASE IF NOT EXISTS wordpress; \
 CREATE USER IF NOT EXISTS 'wordpress'@'%' IDENTIFIED BY '${WORDPRESS_DB_PASSWORD}'; \
