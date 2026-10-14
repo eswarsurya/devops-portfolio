@@ -1,0 +1,6 @@
+# Scenario scripts source ../../lib/lab.sh relative to their own folder.
+source-path=SCRIPTDIR
+external-sources=true
+# SC2012: ls on /proc/<pid>/fd only lists numbers, so it is safe here.
+# SC2317/SC2329: helper functions are called indirectly through wait_until.
+disable=SC2012,SC2317,SC2329
