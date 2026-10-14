@@ -107,7 +107,11 @@ if ! fired; then
 fi
 sql db3 "START REPLICA SQL_THREAD"
 check "job succeeds again after replication is repaired" retry 5 ./scripts/rundeck.sh run "Replication health check"
-resolved() { alerts | grep -q '"type": "resolve".*replication-health'; }
+# a recovery notice must come after the most recent alert (the scheduled job also sends them while healthy)
+resolved() { alerts | python3 -c "
+import json,sys
+types=[json.loads(l)['type'] for l in sys.stdin if 'replication-health' in l]
+sys.exit(0 if 'alert' in types and 'resolve' in types[len(types)-1-types[::-1].index('alert'):] else 1)"; }
 check "a recovery notice followed" retry 20 resolved
 check "LDAP access audit job runs" ./scripts/rundeck.sh run "SRE group membership audit"
 
