@@ -1,4 +1,4 @@
-# Imported into the "dublin-dc" Rundeck project by scripts/rundeck-import.sh
+# Imported into the "dublin-dc" Rundeck project by scripts/rundeck.sh import
 - name: Replication health check
   group: database
   uuid: c9aba329-80cb-4245-a246-9d6c5e55c97d
@@ -19,7 +19,7 @@
     keepgoing: false
     strategy: node-first
     commands:
-    - exec: bash -c 'set -a; . /opt/lab/env/monitor.env; set +a; /opt/lab/check-replication.sh'
+    - exec: /opt/lab/run-with-env.sh /opt/lab/check-replication.sh
   notification:
     onfailure:
       urls: http://alert-receiver:9000/alert?source=rundeck&job=replication-health
@@ -32,5 +32,4 @@
   loglevel: INFO
   sequence:
     commands:
-    - exec: bash -c 'set -a; . /opt/lab/env/monitor.env; set +a; ldapsearch -x -LLL -H ldap://ldap -D cn=readonly,dc=dublin-dc,dc=lab -w "$LDAP_READONLY_PASSWORD" -b cn=sre,ou=groups,dc=dublin-dc,dc=lab
-        member'
+    - exec: /opt/lab/run-with-env.sh /opt/lab/ldap-audit.sh

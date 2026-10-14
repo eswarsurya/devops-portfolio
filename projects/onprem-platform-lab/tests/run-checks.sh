@@ -42,12 +42,12 @@ echo "      $issuer"
 check "Nginx serves a certificate issued over ACME by the Pebble CA" grep -q Pebble <<<"$issuer"
 redirect=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -H "Host: $HOST" http://127.0.0.1:8080/)
 check "HTTP redirects to HTTPS ($redirect)" grep -q "^301 https://$HOST/" <<<"$redirect"
-hsts() { https -I "https://$HOST:8443/" | grep -qi strict-transport-security; }
+hsts() { [[ $(https -I "https://$HOST:8443/") == *[Ss]trict-[Tt]ransport-[Ss]ecurity* ]]; }
 check "HSTS header is set" hsts
 
 # ------------------------------------------------------------------
 section "WordPress on Apache/PHP through the load balancer"
-wp_ready() { https "https://$HOST:8443/wp-admin/install.php" | grep -q "WordPress"; }
+wp_ready() { [[ $(https "https://$HOST:8443/wp-admin/install.php") == *WordPress* ]]; }
 check "WordPress installer loads (PHP connected to MySQL through db1)" retry 20 wp_ready || true
 if ! wp_ready; then
   page=$(https -i "https://$HOST:8443/wp-admin/install.php" | head -c 1500 | tr -d '\r')
