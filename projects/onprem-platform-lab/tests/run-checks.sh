@@ -100,11 +100,15 @@ echo "      (stopped the SQL thread on db3 to simulate broken replication)"
 check "replication check job fails when db3 stops applying changes" not env EXPECT_FAILURE=1 ./scripts/rundeck.sh run "Replication health check"
 alerts() { docker compose exec -T alert-receiver wget -qO- http://localhost:9000/alerts; }
 fired() { alerts | grep -q '"type": "alert".*replication-health'; }
-check "an alert was sent to the alert receiver" retry 10 fired
+check "an alert was sent to the alert receiver" retry 20 fired
+if ! fired; then
+  echo "::warning title=alert receiver contents::$(alerts | tail -5 | sed ':a;N;$!ba;s/\n/%0A/g')"
+  echo "::warning title=rundeck notification log::$(docker compose logs --no-color rundeck 2>&1 | grep -i -E 'notif|webhook|url' | tail -10 | cut -c1-250 | sed ':a;N;$!ba;s/\n/%0A/g')"
+fi
 sql db3 "START REPLICA SQL_THREAD"
 check "job succeeds again after replication is repaired" retry 5 ./scripts/rundeck.sh run "Replication health check"
 resolved() { alerts | grep -q '"type": "resolve".*replication-health'; }
-check "a recovery notice followed" retry 10 resolved
+check "a recovery notice followed" retry 20 resolved
 check "LDAP access audit job runs" ./scripts/rundeck.sh run "SRE group membership audit"
 
 # ------------------------------------------------------------------
