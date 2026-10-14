@@ -1,0 +1,24 @@
+# Server and service metrics for the lab
+metricbeat.modules:
+  - module: mysql
+    metricsets: ["status"]
+    enabled: true
+    period: 10s
+    hosts:
+      - "monitor:${MYSQL_MONITOR_PASSWORD}@tcp(db1:3306)/"
+      - "monitor:${MYSQL_MONITOR_PASSWORD}@tcp(db2:3306)/"
+      - "monitor:${MYSQL_MONITOR_PASSWORD}@tcp(db3:3306)/"
+  - module: nginx
+    metricsets: ["stubstatus"]
+    period: 10s
+    hosts: ["http://nginx:8081"]
+    server_status_path: "nginx_status"
+  - module: system
+    metricsets: ["cpu", "memory", "network", "process_summary"]
+    period: 10s
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+setup.kibana:
+  host: "http://kibana:5601"
+logging.level: warning

@@ -1,0 +1,92 @@
+name: onprem-platform-lab
+
+on:
+  push:
+    branches: [main, "build/onprem-*"]
+    paths:
+      - "projects/onprem-platform-lab/**"
+      - ".github/workflows/onprem-platform-lab-ci.yml"
+  pull_request:
+    paths:
+      - "projects/onprem-platform-lab/**"
+      - ".github/workflows/onprem-platform-lab-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: projects/onprem-platform-lab
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck
+        run: shellcheck scripts/*.sh tests/*.sh vpn/start.sh
+      - name: Compose file is valid
+        run: cp .env.example .env && docker compose config --quiet
+      - name: Alert receiver compiles
+        run: python3 -m py_compile alert-receiver/receiver.py
+
+  # The scanner must flag the vulnerable build and pass the fixed one.
+  log4j-remediation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Vulnerable build is flagged for Log4Shell
+        run: |
+          docker run --rm -v "$PWD/log4j-remediation:/src" aquasec/trivy:0.56.2 fs --quiet --scanners vuln \
+            --severity CRITICAL --format table /src/vulnerable | tee vulnerable.txt
+          grep -q CVE-2021-44228 vulnerable.txt
+      - name: Fixed build has no critical findings
+        run: |
+          docker run --rm -v "$PWD/log4j-remediation:/src" aquasec/trivy:0.56.2 fs --quiet --scanners vuln \
+            --severity CRITICAL --exit-code 1 /src/fixed
+
+  # Starts the whole data centre and runs every check in tests/run-checks.sh.
+  end-to-end:
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load the WireGuard kernel module
+        run: sudo modprobe wireguard && lsmod | grep -q wireguard
+
+      - name: Generate throwaway passwords, keys and config
+        run: |
+          ./scripts/render-config.sh --generate
+          while IFS='=' read -r _ value; do echo "::add-mask::$value"; done < .env
+
+      - name: Build and start the lab
+        run: docker compose up -d --build
+
+      - name: Wait for the databases, then wire up replication
+        run: ./scripts/setup-replication.sh
+
+      - name: Import the Rundeck runbooks
+        run: ./scripts/rundeck.sh import
+
+      - name: End-to-end checks
+        run: ./tests/run-checks.sh
+
+      - name: Show container state and logs on failure
+        if: failure()
+        run: |
+          docker compose ps -a
+          for svc in $(docker compose config --services); do
+            echo "----- $svc"; docker compose logs --no-color --tail=40 "$svc" 2>&1 || true
+          done
+          # also surface short log tails as annotations, readable without opening the run
+          for svc in $(docker compose ps -a --format '{{.Service}} {{.State}}' | awk '$2!="running"{print $1}') db1 rundeck certbot nginx; do
+            tail=$(docker compose logs --no-color --tail=12 "$svc" 2>&1 | cut -c1-300 | sed ':a;N;$!ba;s/\n/%0A/g')
+            echo "::warning title=logs: $svc::$tail"
+          done
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

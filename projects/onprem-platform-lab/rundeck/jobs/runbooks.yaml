@@ -1,0 +1,36 @@
+# Imported into the "dublin-dc" Rundeck project by scripts/rundeck-import.sh
+- name: Replication health check
+  group: database
+  uuid: c9aba329-80cb-4245-a246-9d6c5e55c97d
+  description: Checks every MySQL replica (IO and SQL threads, lag). Fails and alerts if any replica is broken.
+  loglevel: INFO
+  schedule:
+    month: '*'
+    time:
+      hour: '*'
+      minute: '*'
+      seconds: '0'
+    weekday:
+      day: '*'
+    year: '*'
+  scheduleEnabled: true
+  executionEnabled: true
+  sequence:
+    keepgoing: false
+    strategy: node-first
+    commands:
+    - exec: bash -c 'set -a; . /opt/lab/env/monitor.env; set +a; /opt/lab/check-replication.sh'
+  notification:
+    onfailure:
+      urls: http://alert-receiver:9000/alert?source=rundeck&job=replication-health
+    onsuccess:
+      urls: http://alert-receiver:9000/resolve?source=rundeck&job=replication-health
+- name: SRE group membership audit
+  group: access
+  uuid: 767973c9-30f2-4019-8dbb-7feacffa635a
+  description: Lists who is in the LDAP sre group, for the weekly access review.
+  loglevel: INFO
+  sequence:
+    commands:
+    - exec: bash -c 'set -a; . /opt/lab/env/monitor.env; set +a; ldapsearch -x -LLL -H ldap://ldap -D cn=readonly,dc=dublin-dc,dc=lab -w "$LDAP_READONLY_PASSWORD" -b cn=sre,ou=groups,dc=dublin-dc,dc=lab
+        member'

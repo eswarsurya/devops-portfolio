@@ -1,0 +1,236 @@
+# On-prem platform lab: a small private data centre on one machine.
+# Run scripts/render-config.sh --generate first (creates .env and ./generated).
+name: dublin-dc
+
+x-mysql: &mysql
+  image: mysql:8.4.3
+  environment:
+    MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    MYSQL_REPL_PASSWORD: ${MYSQL_REPL_PASSWORD}
+    MYSQL_MONITOR_PASSWORD: ${MYSQL_MONITOR_PASSWORD}
+  healthcheck:
+    test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_ROOT_PASSWORD mysqladmin -uroot ping --silent"]
+    interval: 5s
+    retries: 30
+  networks: [lab]
+  restart: unless-stopped
+
+x-web: &web
+  build: ./apache
+  volumes:
+    - wp-content:/var/www/html/wp-content
+  networks: [lab]
+  depends_on:
+    db1: { condition: service_healthy }
+    ldap: { condition: service_started }
+  restart: unless-stopped
+
+services:
+  # ---------- databases: db1 <-> db2 master-master, db3 read replica of db1 ----------
+  db1:
+    <<: *mysql
+    volumes:
+      - ./mysql/db1.cnf:/etc/mysql/conf.d/lab.cnf:ro
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+      - db1:/var/lib/mysql
+  db2:
+    <<: *mysql
+    volumes:
+      - ./mysql/db2.cnf:/etc/mysql/conf.d/lab.cnf:ro
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+      - db2:/var/lib/mysql
+  db3:
+    <<: *mysql
+    volumes:
+      - ./mysql/db3.cnf:/etc/mysql/conf.d/lab.cnf:ro
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+      - db3:/var/lib/mysql
+
+  # ---------- directory ----------
+  ldap:
+    image: osixia/openldap:1.5.0
+    command: ["--copy-service"]
+    environment:
+      LDAP_ORGANISATION: Dublin DC Lab
+      LDAP_DOMAIN: dublin-dc.lab
+      LDAP_ADMIN_PASSWORD: ${LDAP_ADMIN_PASSWORD}
+      LDAP_READONLY_USER: "true"
+      LDAP_READONLY_USER_USERNAME: readonly
+      LDAP_READONLY_USER_PASSWORD: ${LDAP_READONLY_PASSWORD}
+      LDAP_TLS: "false"
+    volumes:
+      - ./generated/ldap:/container/service/slapd/assets/config/bootstrap/ldif/custom:ro
+    networks: [lab]
+    restart: unless-stopped
+
+  # ---------- web tier: two Apache/PHP nodes behind Nginx ----------
+  web1:
+    <<: *web
+    environment:
+      NODE_NAME: web1
+      WORDPRESS_DB_HOST: db1
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+      WORDPRESS_DB_NAME: wordpress
+      LDAP_READONLY_PASSWORD: ${LDAP_READONLY_PASSWORD}
+  web2:
+    <<: *web
+    environment:
+      NODE_NAME: web2
+      WORDPRESS_DB_HOST: db1
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+      WORDPRESS_DB_NAME: wordpress
+      LDAP_READONLY_PASSWORD: ${LDAP_READONLY_PASSWORD}
+
+  # ---------- certificates: Let's Encrypt's ACME flow against Pebble, its test CA ----------
+  pebble:
+    image: ghcr.io/letsencrypt/pebble:2.6.0
+    environment:
+      PEBBLE_VA_NOSLEEP: "1"
+    networks: [lab]
+  certbot:
+    image: certbot/certbot:v2.11.0
+    command: >
+      certonly --standalone --non-interactive --agree-tos -m ops@dublin-dc.lab
+      --server https://pebble:14000/dir --no-verify-ssl --http-01-port 5002
+      -d portal.dublin-dc.lab --keep-until-expiring
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+    networks:
+      lab:
+        aliases: [portal.dublin-dc.lab]
+    depends_on: [pebble]
+
+  # ---------- edge ----------
+  nginx:
+    image: nginx:1.27.2
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - letsencrypt:/etc/letsencrypt:ro
+      - nginx-logs:/var/log/nginx
+    ports: ["8080:80", "8443:443"]
+    networks:
+      lab:
+        ipv4_address: 172.30.10.10
+    depends_on:
+      certbot: { condition: service_completed_successfully }
+      web1: { condition: service_started }
+      web2: { condition: service_started }
+    restart: unless-stopped
+
+  # ---------- site-to-site VPN: branch office <-> data centre over WireGuard ----------
+  dc-gw:
+    build: ./vpn
+    environment: { ROLE: dc }
+    cap_add: [NET_ADMIN]
+    sysctls:
+      net.ipv4.ip_forward: "1"
+      net.ipv4.conf.all.src_valid_mark: "1"
+    volumes:
+      - ./generated/wireguard/dc-gw:/etc/wireguard:ro
+    networks: [wan, lab]
+  branch-gw:
+    build: ./vpn
+    environment: { ROLE: branch }
+    cap_add: [NET_ADMIN]
+    sysctls:
+      net.ipv4.conf.all.src_valid_mark: "1"
+    volumes:
+      - ./generated/wireguard/branch-gw:/etc/wireguard:ro
+    networks: [wan]
+    depends_on: [dc-gw]
+
+  # ---------- ELK: logs, metrics and uptime ----------
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"   # lab only; see README "Trade-offs"
+      ES_JAVA_OPTS: -Xms1g -Xmx1g
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    ports: ["9200:9200"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s"]
+      interval: 10s
+      retries: 30
+    networks: [lab]
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.15.3
+    environment:
+      LS_JAVA_OPTS: -Xms512m -Xmx512m
+      XPACK_MONITORING_ENABLED: "false"
+    volumes:
+      - ./elk/logstash/pipeline.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+      - nginx-logs:/var/log/nginx:ro
+    depends_on:
+      elasticsearch: { condition: service_healthy }
+    networks: [lab]
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.3
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    ports: ["5601:5601"]
+    depends_on:
+      elasticsearch: { condition: service_healthy }
+    networks: [lab]
+  metricbeat:
+    image: docker.elastic.co/beats/metricbeat:8.15.3
+    user: root
+    command: ["--strict.perms=false"]
+    environment:
+      MYSQL_MONITOR_PASSWORD: ${MYSQL_MONITOR_PASSWORD}
+    volumes:
+      - ./elk/beats/metricbeat.yml:/usr/share/metricbeat/metricbeat.yml:ro
+    depends_on:
+      elasticsearch: { condition: service_healthy }
+    networks: [lab]
+  heartbeat:
+    image: docker.elastic.co/beats/heartbeat:8.15.3
+    command: ["--strict.perms=false"]
+    volumes:
+      - ./elk/beats/heartbeat.yml:/usr/share/heartbeat/heartbeat.yml:ro
+    depends_on:
+      elasticsearch: { condition: service_healthy }
+    networks: [lab]
+
+  # ---------- runbook automation and alerting ----------
+  rundeck:
+    build:
+      context: .
+      dockerfile: rundeck/Dockerfile
+    environment:
+      RUNDECK_GRAILS_URL: http://localhost:4440
+      RUNDECK_TOKENS_FILE: /home/rundeck/etc/tokens.properties
+    volumes:
+      - ./generated/rundeck/realm.properties:/home/rundeck/server/config/realm.properties:ro
+      - ./generated/rundeck/tokens.properties:/home/rundeck/etc/tokens.properties:ro
+      - ./generated/rundeck/monitor.env:/opt/lab/env/monitor.env:ro
+    ports: ["4440:4440"]
+    networks: [lab]
+  alert-receiver:
+    image: python:3.12.7-alpine
+    command: ["python", "/app/receiver.py"]
+    volumes:
+      - ./alert-receiver:/app:ro
+      - alerts:/data
+    networks: [lab]
+
+networks:
+  lab:
+    ipam:
+      config: [{ subnet: 172.30.10.0/24 }]
+  wan:
+    ipam:
+      config: [{ subnet: 172.30.99.0/24 }]
+
+volumes:
+  db1:
+  db2:
+  db3:
+  wp-content:
+  letsencrypt:
+  nginx-logs:
+  es-data:
+  alerts:
